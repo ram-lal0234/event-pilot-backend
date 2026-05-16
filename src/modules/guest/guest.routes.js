@@ -26,15 +26,15 @@ router
   .post(validate({ body: createGuestSchema }), guestController.createGuest)
   .get(validate({ query: guestQuerySchema }), guestController.listGuests);
 
-router
-  .route('/:id')
-  .patch(validate({ params: guestIdParamSchema, body: updateGuestSchema }), guestController.updateGuest)
-  .delete(validate({ params: guestIdParamSchema }), guestController.deleteGuest);
-
 router.patch(
   '/:id/rsvp',
   validate({ params: guestIdParamSchema, body: updateGuestRsvpSchema }),
   guestController.updateGuestRsvp
 );
+
+router
+  .route('/:id')
+  .patch(validate({ params: guestIdParamSchema, body: updateGuestSchema }), guestController.updateGuest)
+  .delete(validate({ params: guestIdParamSchema }), guestController.deleteGuest);
 
 module.exports = router;

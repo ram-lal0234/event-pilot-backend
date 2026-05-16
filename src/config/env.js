@@ -12,7 +12,7 @@ const envSchema = Joi.object({
   REDIS_HOST: Joi.string().default('127.0.0.1'),
   REDIS_PORT: Joi.number().port().default(6379),
   REDIS_PASSWORD: Joi.string().allow('', null),
-  QUEUE_PROVIDER: Joi.string().valid('bullmq', 'sqs').default('bullmq')
+  QUEUE_PROVIDER: Joi.string().valid('bullmq', 'sqs', 'local').default('local')
 }).unknown(true);
 
 const { value, error } = envSchema.validate(process.env, { abortEarly: false });

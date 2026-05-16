@@ -25,6 +25,10 @@ Run queue workers in a separate process:
 npm run worker
 ```
 
+Local development defaults to `QUEUE_PROVIDER=local`, which writes audit logs
+synchronously and logs mock IVR/notification jobs without requiring Redis. Use
+`QUEUE_PROVIDER=bullmq` when Redis is running and you want real BullMQ queues.
+
 Working vertical slice:
 
 ```bash

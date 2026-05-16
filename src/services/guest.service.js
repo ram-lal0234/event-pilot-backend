@@ -166,6 +166,10 @@ const triggerIvr = async (guestId, user) => {
 
   await assertEventAccess(guest.eventId, user);
 
+  if (guest.rsvpStatus !== 'PENDING') {
+    throw new AppError('IVR can only be triggered for guests with pending RSVP.', 409, 'IVR_NOT_ALLOWED_FOR_RSVP_STATUS');
+  }
+
   await queueService.addJob('ivr', {
     guestId: guest.id,
     eventId: guest.eventId,

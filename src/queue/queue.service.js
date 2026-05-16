@@ -26,9 +26,20 @@ const addSqsJob = async (type, payload) => {
   });
 };
 
+const addLocalJob = async (type, payload) => {
+  logger.info('Local queue provider selected; job logged only', {
+    type,
+    payload
+  });
+};
+
 const addJob = async (type, payload, options = {}) => {
   if (env.queueProvider === 'sqs') {
     return addSqsJob(type, payload, options);
+  }
+
+  if (env.queueProvider === 'local') {
+    return addLocalJob(type, payload, options);
   }
 
   return addBullMqJob(type, payload, options);
