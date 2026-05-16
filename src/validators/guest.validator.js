@@ -26,6 +26,11 @@ const updateGuestSchema = Joi.object({
   groupSize: Joi.number().integer().min(1).max(100)
 }).min(1);
 
+const updateGuestRsvpSchema = Joi.object({
+  rsvpStatus: Joi.string().valid('PENDING', 'CONFIRMED', 'DECLINED').required(),
+  groupSize: Joi.number().integer().min(1).max(100).required()
+});
+
 const guestIdParamSchema = Joi.object({
   id: uuid.required()
 });
@@ -41,6 +46,7 @@ const guestQuerySchema = Joi.object({
 module.exports = {
   createGuestSchema,
   updateGuestSchema,
+  updateGuestRsvpSchema,
   guestIdParamSchema,
   guestQuerySchema
 };

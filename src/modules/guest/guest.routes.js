@@ -5,6 +5,7 @@ const validate = require('../../middlewares/validate.middleware');
 const {
   createGuestSchema,
   updateGuestSchema,
+  updateGuestRsvpSchema,
   guestIdParamSchema,
   guestQuerySchema
 } = require('../../validators/guest.validator');
@@ -29,5 +30,11 @@ router
   .route('/:id')
   .patch(validate({ params: guestIdParamSchema, body: updateGuestSchema }), guestController.updateGuest)
   .delete(validate({ params: guestIdParamSchema }), guestController.deleteGuest);
+
+router.patch(
+  '/:id/rsvp',
+  validate({ params: guestIdParamSchema, body: updateGuestRsvpSchema }),
+  guestController.updateGuestRsvp
+);
 
 module.exports = router;

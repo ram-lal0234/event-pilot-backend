@@ -28,6 +28,15 @@ const updateGuest = async (req, res, next) => {
   }
 };
 
+const updateGuestRsvp = async (req, res, next) => {
+  try {
+    const guest = await guestService.updateGuestRsvp(req.params.id, req.body, req.user);
+    response.success(res, guest, 'Guest RSVP updated successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
 const deleteGuest = async (req, res, next) => {
   try {
     const result = await guestService.deleteGuest(req.params.id, req.user);
@@ -53,6 +62,7 @@ module.exports = {
   createGuest,
   listGuests,
   updateGuest,
+  updateGuestRsvp,
   deleteGuest,
   uploadCsv
 };

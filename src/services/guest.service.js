@@ -111,6 +111,39 @@ const updateGuest = async (id, payload, user) => {
   return guestRepository.update(id, payload);
 };
 
+const updateGuestRsvp = async (id, payload, user) => {
+  const guest = await guestRepository.findById(id);
+
+  if (!guest) {
+    throw new AppError('Guest not found', 404, 'GUEST_NOT_FOUND');
+  }
+
+  await assertEventAccess(guest.eventId, user);
+
+  const updatedGuest = await guestRepository.update(id, {
+    rsvpStatus: payload.rsvpStatus,
+    groupSize: payload.groupSize,
+    ivrRespondedAt: new Date()
+  });
+
+  await auditService.enqueueAuditLog({
+    eventId: guest.eventId,
+    userId: user.id,
+    action: 'RSVP_MANUALLY_UPDATED',
+    entityType: 'Guest',
+    entityId: guest.id,
+    metadata: {
+      previousRsvpStatus: guest.rsvpStatus,
+      nextRsvpStatus: payload.rsvpStatus,
+      previousGroupSize: guest.groupSize,
+      nextGroupSize: payload.groupSize,
+      updatedBy: user.id
+    }
+  });
+
+  return updatedGuest;
+};
+
 const deleteGuest = async (id, user) => {
   const guest = await guestRepository.findById(id);
 
@@ -177,6 +210,7 @@ module.exports = {
   createGuest,
   listGuests,
   updateGuest,
+  updateGuestRsvp,
   deleteGuest,
   triggerIvr,
   uploadCsv
