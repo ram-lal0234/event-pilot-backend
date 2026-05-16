@@ -59,6 +59,10 @@ const assignGuest = async ({ roomId, guestId }, user) => {
     throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
   }
 
+  if (guest.rsvpStatus !== 'CONFIRMED') {
+    throw new AppError('Only confirmed guests can be assigned to a room', 409, 'ROOM_ASSIGNMENT_REQUIRES_CONFIRMED_RSVP');
+  }
+
   const occupied = await hotelRepository.assignedMembers(roomId);
 
   if (occupied + guest.groupSize > room.capacity) {

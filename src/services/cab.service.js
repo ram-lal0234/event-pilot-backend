@@ -44,6 +44,10 @@ const assignGuest = async ({ cabId, guestId }, user) => {
     throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
   }
 
+  if (guest.rsvpStatus !== 'CONFIRMED') {
+    throw new AppError('Only confirmed guests can be assigned to a cab', 409, 'CAB_ASSIGNMENT_REQUIRES_CONFIRMED_RSVP');
+  }
+
   if (cab.usedSeats + guest.groupSize > cab.capacity) {
     throw new AppError('Cab capacity exceeded', 409, 'CAB_CAPACITY_EXCEEDED');
   }
