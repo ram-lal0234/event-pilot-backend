@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const prisma = require('../config/db');
 const env = require('../config/env');
 const AppError = require('../utils/AppError');
-const logger = require('../utils/logger');
+const emailService = require('./email.service');
 
 const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
@@ -19,7 +19,7 @@ const requestLoginOtp = async ({ email }) => {
     }
   });
 
-  logger.info('Mock OTP generated', { email, otp });
+  await emailService.sendOtpEmail({ email, otp });
 
   return {
     email,

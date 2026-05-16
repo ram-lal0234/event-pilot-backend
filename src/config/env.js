@@ -9,6 +9,9 @@ const envSchema = Joi.object({
   DATABASE_URL: Joi.string().required(),
   JWT_SECRET: Joi.string().min(32).required(),
   JWT_EXPIRES_IN: Joi.string().default('7d'),
+  EMAIL_PROVIDER: Joi.string().valid('mock', 'resend').default('mock'),
+  RESEND_API_KEY: Joi.string().allow('', null),
+  EMAIL_FROM: Joi.string().allow('', null),
   REDIS_HOST: Joi.string().default('127.0.0.1'),
   REDIS_PORT: Joi.number().port().default(6379),
   REDIS_PASSWORD: Joi.string().allow('', null),
@@ -21,12 +24,23 @@ if (error) {
   throw new Error(`Invalid environment configuration: ${error.message}`);
 }
 
+if (value.NODE_ENV === 'production' && value.EMAIL_PROVIDER !== 'resend') {
+  throw new Error('Invalid environment configuration: "EMAIL_PROVIDER" must be "resend" in production');
+}
+
+if (value.EMAIL_PROVIDER === 'resend' && (!value.RESEND_API_KEY || !value.EMAIL_FROM)) {
+  throw new Error('Invalid environment configuration: "RESEND_API_KEY" and "EMAIL_FROM" are required when EMAIL_PROVIDER is "resend"');
+}
+
 module.exports = {
   nodeEnv: value.NODE_ENV,
   port: value.PORT,
   databaseUrl: value.DATABASE_URL,
   jwtSecret: value.JWT_SECRET,
   jwtExpiresIn: value.JWT_EXPIRES_IN,
+  emailProvider: value.EMAIL_PROVIDER,
+  resendApiKey: value.RESEND_API_KEY || undefined,
+  emailFrom: value.EMAIL_FROM || undefined,
   redis: {
     host: value.REDIS_HOST,
     port: value.REDIS_PORT,
