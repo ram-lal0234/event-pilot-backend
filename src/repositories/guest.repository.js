@@ -44,6 +44,40 @@ const findMany = ({ eventId, rsvpStatus, category }) => {
   });
 };
 
+const findManyPaginated = async ({ eventId, rsvpStatus, category, page, pageSize }) => {
+  const where = {
+    eventId,
+    rsvpStatus,
+    category
+  };
+  const skip = (page - 1) * pageSize;
+
+  const [items, total] = await prisma.$transaction([
+    prisma.guest.findMany({
+      where,
+      include: {
+        checkins: true,
+        cabAssignments: true,
+        roomAssignments: true
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: pageSize
+    }),
+    prisma.guest.count({ where })
+  ]);
+
+  return {
+    items,
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize))
+    }
+  };
+};
+
 const update = (id, data) => {
   return prisma.guest.update({
     where: { id },
@@ -62,6 +96,7 @@ module.exports = {
   findById,
   findByQrCode,
   findMany,
+  findManyPaginated,
   update,
   remove
 };

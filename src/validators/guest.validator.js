@@ -33,7 +33,9 @@ const guestIdParamSchema = Joi.object({
 const guestQuerySchema = Joi.object({
   eventId: uuid.required(),
   rsvpStatus: Joi.string().valid('PENDING', 'CONFIRMED', 'DECLINED'),
-  category: Joi.string().valid('VIP', 'FAMILY', 'GENERAL')
+  category: Joi.string().valid('VIP', 'FAMILY', 'GENERAL'),
+  page: Joi.number().integer().min(1),
+  pageSize: Joi.number().integer().min(1).max(100)
 });
 
 module.exports = {

@@ -63,6 +63,15 @@ const createGuest = async (payload, user) => {
 
 const listGuests = async (query, user) => {
   await assertEventAccess(query.eventId, user);
+
+  if (query.page || query.pageSize) {
+    return guestRepository.findManyPaginated({
+      ...query,
+      page: query.page || 1,
+      pageSize: query.pageSize || 10
+    });
+  }
+
   return guestRepository.findMany(query);
 };
 
