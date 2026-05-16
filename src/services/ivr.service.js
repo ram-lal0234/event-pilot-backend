@@ -3,7 +3,7 @@ const ivrRepository = require('../repositories/ivr.repository');
 const auditService = require('./audit.service');
 const AppError = require('../utils/AppError');
 
-const handleWebhook = async ({ guestId, callStatus, responseInput, groupSize }) => {
+const handleWebhook = async ({ guestId, callStatus, attempt, callDuration, responseInput, groupSize }) => {
   const guest = await guestRepository.findById(guestId);
 
   if (!guest) {
@@ -16,11 +16,16 @@ const handleWebhook = async ({ guestId, callStatus, responseInput, groupSize }) 
     eventId: guest.eventId,
     guestId,
     callStatus,
-    responseInput
+    attempt,
+    callDuration,
+    responseInput,
+    rsvpCaptured: Boolean(responseInput),
+    groupSizeCaptured: Boolean(groupSize)
   });
 
   const updatedGuest = await guestRepository.update(guestId, {
     rsvpStatus,
+    ivrRespondedAt: new Date(),
     ...(groupSize ? { groupSize } : {})
   });
 

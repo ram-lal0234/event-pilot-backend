@@ -2,10 +2,11 @@ const queueService = require('../queue/queue.service');
 const prisma = require('../config/db');
 const logger = require('../utils/logger');
 
-const enqueueAuditLog = async ({ eventId, action, entityType, entityId, metadata = {} }) => {
+const enqueueAuditLog = async ({ eventId, userId, action, entityType, entityId, metadata = {} }) => {
   try {
     await queueService.addJob('audit', {
       eventId,
+      userId,
       action,
       entityType,
       entityId,
@@ -22,6 +23,7 @@ const enqueueAuditLog = async ({ eventId, action, entityType, entityId, metadata
     await prisma.auditLog.create({
       data: {
         eventId,
+        userId,
         action,
         entityType,
         entityId,

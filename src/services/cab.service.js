@@ -34,17 +34,22 @@ const assignGuest = async ({ cabId, guestId }, user) => {
     throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
   }
 
-  const occupied = await cabRepository.assignedGroupSize(cabId);
-
-  if (occupied + guest.groupSize > cab.capacity) {
+  if (cab.usedSeats + guest.groupSize > cab.capacity) {
     throw new AppError('Cab capacity exceeded', 409, 'CAB_CAPACITY_EXCEEDED');
   }
 
-  return cabRepository.assignGuest({
+  const assignment = await cabRepository.assignGuestWithSeatReservation({
     eventId: cab.eventId,
     cabId,
-    guestId
+    guestId,
+    seats: guest.groupSize
   });
+
+  if (!assignment) {
+    throw new AppError('Cab capacity exceeded', 409, 'CAB_CAPACITY_EXCEEDED');
+  }
+
+  return assignment;
 };
 
 module.exports = {

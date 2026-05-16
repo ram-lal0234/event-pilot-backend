@@ -6,15 +6,27 @@ const findHotelById = (id) => prisma.hotel.findUnique({ where: { id } });
 
 const createRoom = (data) => prisma.room.create({ data });
 
-const findRoomById = (id) => prisma.room.findUnique({ where: { id } });
+const findRoomById = (id) => prisma.room.findUnique({
+  where: { id },
+  include: {
+    hotel: {
+      select: {
+        id: true,
+        eventId: true
+      }
+    }
+  }
+});
 
-const assignedGroupSize = async (roomId) => {
-  const assignments = await prisma.roomAssignment.findMany({
+const assignedMembers = async (roomId) => {
+  const result = await prisma.roomAssignment.aggregate({
     where: { roomId },
-    include: { guest: { select: { groupSize: true } } }
+    _sum: {
+      assignedMembers: true
+    }
   });
 
-  return assignments.reduce((total, assignment) => total + assignment.guest.groupSize, 0);
+  return result._sum.assignedMembers || 0;
 };
 
 const assignGuest = (data) => prisma.roomAssignment.create({ data });
@@ -24,6 +36,6 @@ module.exports = {
   findHotelById,
   createRoom,
   findRoomById,
-  assignedGroupSize,
+  assignedMembers,
   assignGuest
 };

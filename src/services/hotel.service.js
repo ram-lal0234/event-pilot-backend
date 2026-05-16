@@ -27,7 +27,6 @@ const createRoom = async (payload, user) => {
   }
 
   return hotelRepository.createRoom({
-    eventId: hotel.eventId,
     hotelId: payload.hotelId,
     roomNumber: payload.roomNumber,
     capacity: payload.capacity
@@ -40,26 +39,27 @@ const assignGuest = async ({ roomId, guestId }, user) => {
     guestRepository.findById(guestId)
   ]);
 
-  if (!room || !guest || room.eventId !== guest.eventId) {
+  if (!room || !guest || room.hotel.eventId !== guest.eventId) {
     throw new AppError('Room or guest not found for the same event', 404, 'ROOM_ASSIGNMENT_TARGET_NOT_FOUND');
   }
 
-  const hasAccess = await eventRepository.userCanAccessEvent(room.eventId, user);
+  const hasAccess = await eventRepository.userCanAccessEvent(room.hotel.eventId, user);
 
   if (!hasAccess) {
     throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
   }
 
-  const occupied = await hotelRepository.assignedGroupSize(roomId);
+  const occupied = await hotelRepository.assignedMembers(roomId);
 
   if (occupied + guest.groupSize > room.capacity) {
     throw new AppError('Room capacity exceeded', 409, 'ROOM_CAPACITY_EXCEEDED');
   }
 
   return hotelRepository.assignGuest({
-    eventId: room.eventId,
+    eventId: room.hotel.eventId,
     roomId,
-    guestId
+    guestId,
+    assignedMembers: guest.groupSize
   });
 };
 

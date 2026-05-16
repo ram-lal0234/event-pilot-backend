@@ -15,6 +15,14 @@ const assertEventAccess = async (eventId, user) => {
   }
 };
 
+const toOptionalNumber = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+
+  return Number(value);
+};
+
 const createGuest = async (payload, user) => {
   await assertEventAccess(payload.eventId, user);
 
@@ -26,6 +34,9 @@ const createGuest = async (payload, user) => {
     name: payload.name,
     phone: payload.phone,
     email: payload.email || null,
+    pickupLocation: payload.pickupLocation || null,
+    pickupLat: payload.pickupLat,
+    pickupLng: payload.pickupLng,
     category: payload.category,
     groupSize: payload.groupSize,
     qrCode
@@ -33,6 +44,7 @@ const createGuest = async (payload, user) => {
 
   await auditService.enqueueAuditLog({
     eventId: guest.eventId,
+    userId: user.id,
     action: 'GUEST_CREATED',
     entityType: 'Guest',
     entityId: guest.id,
@@ -113,6 +125,9 @@ const uploadCsv = async ({ eventId, csv }, user) => {
       name: record.name,
       phone: record.phone,
       email: record.email || null,
+      pickupLocation: record.pickup_location || record.pickupLocation || null,
+      pickupLat: toOptionalNumber(record.pickup_lat || record.pickupLat),
+      pickupLng: toOptionalNumber(record.pickup_lng || record.pickupLng),
       category: record.category || 'GENERAL',
       groupSize: Number(record.group_size || record.groupSize || 1)
     }, user));

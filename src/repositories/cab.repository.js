@@ -4,20 +4,59 @@ const create = (data) => prisma.cab.create({ data });
 
 const findById = (id) => prisma.cab.findUnique({ where: { id } });
 
-const assignedGroupSize = async (cabId) => {
-  const assignments = await prisma.cabAssignment.findMany({
-    where: { cabId },
-    include: { guest: { select: { groupSize: true } } }
-  });
-
-  return assignments.reduce((total, assignment) => total + assignment.guest.groupSize, 0);
-};
-
 const assignGuest = (data) => prisma.cabAssignment.create({ data });
+
+const assignGuestWithSeatReservation = ({ eventId, cabId, guestId, seats }) => {
+  return prisma.$transaction(async (tx) => {
+    const currentCab = await tx.cab.findUnique({
+      where: { id: cabId },
+      select: { capacity: true }
+    });
+
+    if (!currentCab) {
+      return null;
+    }
+
+    const reservation = await tx.cab.updateMany({
+      where: {
+        id: cabId,
+        usedSeats: {
+          lte: currentCab.capacity - seats
+        }
+      },
+      data: {
+        usedSeats: {
+          increment: seats
+        }
+      }
+    });
+
+    if (reservation.count !== 1) {
+      return null;
+    }
+
+    const cab = await tx.cab.findUnique({
+      where: { id: cabId },
+      select: { usedSeats: true, capacity: true }
+    });
+
+    if (!cab || cab.usedSeats > cab.capacity) {
+      throw new Error('CAB_CAPACITY_EXCEEDED');
+    }
+
+    return tx.cabAssignment.create({
+      data: {
+        eventId,
+        cabId,
+        guestId
+      }
+    });
+  });
+};
 
 module.exports = {
   create,
   findById,
-  assignedGroupSize,
-  assignGuest
+  assignGuest,
+  assignGuestWithSeatReservation
 };

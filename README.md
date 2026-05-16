@@ -12,6 +12,13 @@ npx prisma migrate dev --name init
 npm run dev
 ```
 
+For Supabase, keep two database URLs:
+
+- `DATABASE_URL`: pooled runtime URL, usually the pooler URL.
+- `DIRECT_URL`: direct/session URL for Prisma migrations.
+
+Prisma migrations should use `DIRECT_URL` through `directUrl` in `prisma/schema.prisma`; runtime app queries continue using `DATABASE_URL`.
+
 Run queue workers in a separate process:
 
 ```bash
