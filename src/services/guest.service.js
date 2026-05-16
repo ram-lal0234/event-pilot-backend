@@ -23,24 +23,49 @@ const toOptionalNumber = (value) => {
   return Number(value);
 };
 
+const isUniqueConstraintError = (error, fields) => {
+  const target = error?.meta?.target || [];
+
+  return error?.code === 'P2002'
+    && Array.isArray(target)
+    && fields.every((field) => target.includes(field));
+};
+
 const createGuest = async (payload, user) => {
   await assertEventAccess(payload.eventId, user);
 
   const qrCode = `guest:${payload.eventId}:${randomUUID()}`;
   const qrImage = await QRCode.toDataURL(qrCode);
 
-  const guest = await guestRepository.create({
-    eventId: payload.eventId,
-    name: payload.name,
-    phone: payload.phone,
-    email: payload.email || null,
-    pickupLocation: payload.pickupLocation || null,
-    pickupLat: payload.pickupLat,
-    pickupLng: payload.pickupLng,
-    category: payload.category,
-    groupSize: payload.groupSize,
-    qrCode
-  });
+  let guest;
+
+  try {
+    guest = await guestRepository.create({
+      eventId: payload.eventId,
+      name: payload.name,
+      phone: payload.phone,
+      email: payload.email || null,
+      pickupLocation: payload.pickupLocation || null,
+      pickupLat: payload.pickupLat,
+      pickupLng: payload.pickupLng,
+      category: payload.category,
+      groupSize: payload.groupSize,
+      qrCode
+    });
+  } catch (error) {
+    if (
+      isUniqueConstraintError(error, ['event_id', 'phone'])
+      || isUniqueConstraintError(error, ['eventId', 'phone'])
+    ) {
+      throw new AppError('A guest with this phone number already exists for this event.', 409, 'GUEST_PHONE_EXISTS');
+    }
+
+    if (isUniqueConstraintError(error, ['qr_code'])) {
+      throw new AppError('Could not generate a unique QR code. Please try again.', 409, 'GUEST_QR_CONFLICT');
+    }
+
+    throw error;
+  }
 
   await auditService.enqueueAuditLog({
     eventId: guest.eventId,
