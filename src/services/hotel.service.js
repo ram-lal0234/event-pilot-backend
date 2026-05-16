@@ -13,6 +13,16 @@ const createHotel = async (payload, user) => {
   return hotelRepository.createHotel(payload);
 };
 
+const listHotels = async ({ eventId }, user) => {
+  const hasAccess = await eventRepository.userCanAccessEvent(eventId, user);
+
+  if (!hasAccess) {
+    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
+  }
+
+  return hotelRepository.findManyByEvent(eventId);
+};
+
 const createRoom = async (payload, user) => {
   const hotel = await hotelRepository.findHotelById(payload.hotelId);
 
@@ -65,6 +75,7 @@ const assignGuest = async ({ roomId, guestId }, user) => {
 
 module.exports = {
   createHotel,
+  listHotels,
   createRoom,
   assignGuest
 };

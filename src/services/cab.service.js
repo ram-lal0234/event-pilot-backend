@@ -18,6 +18,16 @@ const createCab = async (payload, user) => {
   });
 };
 
+const listCabs = async ({ eventId }, user) => {
+  const hasAccess = await eventRepository.userCanAccessEvent(eventId, user);
+
+  if (!hasAccess) {
+    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
+  }
+
+  return cabRepository.findManyByEvent(eventId);
+};
+
 const assignGuest = async ({ cabId, guestId }, user) => {
   const [cab, guest] = await Promise.all([
     cabRepository.findById(cabId),
@@ -54,5 +64,6 @@ const assignGuest = async ({ cabId, guestId }, user) => {
 
 module.exports = {
   createCab,
+  listCabs,
   assignGuest
 };

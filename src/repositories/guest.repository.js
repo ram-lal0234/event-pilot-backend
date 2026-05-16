@@ -35,6 +35,11 @@ const findMany = ({ eventId, rsvpStatus, category }) => {
       rsvpStatus,
       category
     },
+    include: {
+      checkins: true,
+      cabAssignments: true,
+      roomAssignments: true
+    },
     orderBy: { createdAt: 'desc' }
   });
 };

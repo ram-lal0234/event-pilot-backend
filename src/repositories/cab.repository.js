@@ -4,6 +4,34 @@ const create = (data) => prisma.cab.create({ data });
 
 const findById = (id) => prisma.cab.findUnique({ where: { id } });
 
+const findManyByEvent = (eventId) => {
+  return prisma.cab.findMany({
+    where: {
+      eventId,
+      deletedAt: null
+    },
+    include: {
+      assignments: {
+        include: {
+          guest: {
+            select: {
+              id: true,
+              name: true,
+              groupSize: true
+            }
+          }
+        },
+        orderBy: {
+          assignedAt: 'desc'
+        }
+      }
+    },
+    orderBy: {
+      driverName: 'asc'
+    }
+  });
+};
+
 const assignGuest = (data) => prisma.cabAssignment.create({ data });
 
 const assignGuestWithSeatReservation = ({ eventId, cabId, guestId, seats }) => {
@@ -57,6 +85,7 @@ const assignGuestWithSeatReservation = ({ eventId, cabId, guestId, seats }) => {
 module.exports = {
   create,
   findById,
+  findManyByEvent,
   assignGuest,
   assignGuestWithSeatReservation
 };

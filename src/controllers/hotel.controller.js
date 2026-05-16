@@ -10,6 +10,15 @@ const createHotel = async (req, res, next) => {
   }
 };
 
+const listHotels = async (req, res, next) => {
+  try {
+    const hotels = await hotelService.listHotels(req.query, req.user);
+    response.success(res, hotels);
+  } catch (error) {
+    next(error);
+  }
+};
+
 const createRoom = async (req, res, next) => {
   try {
     const room = await hotelService.createRoom(req.body, req.user);
@@ -30,6 +39,7 @@ const assignGuest = async (req, res, next) => {
 
 module.exports = {
   createHotel,
+  listHotels,
   createRoom,
   assignGuest
 };

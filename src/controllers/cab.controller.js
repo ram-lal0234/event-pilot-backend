@@ -10,6 +10,15 @@ const createCab = async (req, res, next) => {
   }
 };
 
+const listCabs = async (req, res, next) => {
+  try {
+    const cabs = await cabService.listCabs(req.query, req.user);
+    response.success(res, cabs);
+  } catch (error) {
+    next(error);
+  }
+};
+
 const assignGuest = async (req, res, next) => {
   try {
     const assignment = await cabService.assignGuest(req.body, req.user);
@@ -21,5 +30,6 @@ const assignGuest = async (req, res, next) => {
 
 module.exports = {
   createCab,
+  listCabs,
   assignGuest
 };
