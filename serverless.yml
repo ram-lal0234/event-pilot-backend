@@ -25,7 +25,7 @@ layers:
   sharedCode:
     path: layers/shared-code
     name: ${self:service}-${sls:stage}-shared-code
-    description: Shared EventPilot application source used by Lambda handlers
+    description: Shared DB, queue, audit, Plivo, and utility source used by worker Lambdas
     compatibleArchitectures:
       - arm64
 
@@ -96,13 +96,12 @@ provider:
           Resource:
             - !GetAtt AuditLogTable.Arn
             - !Sub '${AuditLogTable.Arn}/index/*'
-  layers:
-    - !Ref DependenciesLambdaLayer
-    - !Ref SharedCodeLambdaLayer
 
 functions:
   core:
     handler: src/lambda/core.handler
+    layers:
+      - !Ref DependenciesLambdaLayer
     events:
       - httpApi:
           method: ANY
@@ -110,6 +109,15 @@ functions:
 
   webhook:
     handler: src/lambda/webhook.handler
+    package:
+      patterns:
+        - '!src/**'
+        - 'src/lambda/webhook.js'
+        - 'src/lambda/http-utils.js'
+        - 'src/lambda/shared.js'
+    layers:
+      - !Ref DependenciesLambdaLayer
+      - !Ref SharedCodeLambdaLayer
     events:
       - httpApi:
           method: POST
@@ -117,12 +125,39 @@ functions:
 
   dialer:
     handler: src/lambda/dialer.handler
+    package:
+      patterns:
+        - '!src/**'
+        - 'src/lambda/dialer.js'
+        - 'src/lambda/shared.js'
+        - 'src/lambda/sqs-utils.js'
+    layers:
+      - !Ref DependenciesLambdaLayer
+      - !Ref SharedCodeLambdaLayer
 
   processor:
     handler: src/lambda/processor.handler
+    package:
+      patterns:
+        - '!src/**'
+        - 'src/lambda/processor.js'
+        - 'src/lambda/shared.js'
+        - 'src/lambda/sqs-utils.js'
+    layers:
+      - !Ref DependenciesLambdaLayer
+      - !Ref SharedCodeLambdaLayer
 
   auditProcessor:
     handler: src/lambda/audit-processor.handler
+    package:
+      patterns:
+        - '!src/**'
+        - 'src/lambda/audit-processor.js'
+        - 'src/lambda/shared.js'
+        - 'src/lambda/sqs-utils.js'
+    layers:
+      - !Ref DependenciesLambdaLayer
+      - !Ref SharedCodeLambdaLayer
 
 resources:
   Resources:
