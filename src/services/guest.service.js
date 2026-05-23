@@ -24,6 +24,19 @@ const toOptionalNumber = (value) => {
   return Number(value);
 };
 
+const pickChangedFields = (before, after, fields) => {
+  return fields.reduce((changes, field) => {
+    if (Object.prototype.hasOwnProperty.call(after, field) && before[field] !== after[field]) {
+      changes[field] = {
+        from: before[field] ?? null,
+        to: after[field] ?? null
+      };
+    }
+
+    return changes;
+  }, {});
+};
+
 const isUniqueConstraintError = (error, fields) => {
   const target = error?.meta?.target || [];
 
@@ -109,7 +122,31 @@ const updateGuest = async (id, payload, user) => {
   }
 
   await assertEventAccess(guest.eventId, user);
-  return guestRepository.update(id, payload);
+  const updatedGuest = await guestRepository.update(id, payload);
+  const changes = pickChangedFields(guest, updatedGuest, [
+    'name',
+    'phone',
+    'email',
+    'pickupLocation',
+    'pickupLat',
+    'pickupLng',
+    'category',
+    'groupSize'
+  ]);
+
+  await auditService.enqueueAuditLog({
+    eventId: guest.eventId,
+    userId: user.id,
+    action: 'GUEST_UPDATED',
+    entityType: 'Guest',
+    entityId: guest.id,
+    metadata: {
+      changes,
+      updatedBy: user.id
+    }
+  });
+
+  return updatedGuest;
 };
 
 const updateGuestRsvp = async (id, payload, user) => {
@@ -155,6 +192,20 @@ const deleteGuest = async (id, user) => {
   await assertEventAccess(guest.eventId, user);
   await guestRepository.remove(id);
 
+  await auditService.enqueueAuditLog({
+    eventId: guest.eventId,
+    userId: user.id,
+    action: 'GUEST_DELETED',
+    entityType: 'Guest',
+    entityId: guest.id,
+    metadata: {
+      name: guest.name,
+      category: guest.category,
+      groupSize: guest.groupSize,
+      deletedBy: user.id
+    }
+  });
+
   return { id };
 };
 
@@ -185,6 +236,19 @@ const triggerIvr = async (guestId, user) => {
     phone: guest.phone
   });
 
+  await auditService.enqueueAuditLog({
+    eventId: guest.eventId,
+    userId: user.id,
+    action: 'IVR_CALL_QUEUED',
+    entityType: 'Call',
+    entityId: call.id,
+    metadata: {
+      guestId: guest.id,
+      status: call.status,
+      queuedBy: user.id
+    }
+  });
+
   return { queued: true, callId: call.id };
 };
 
@@ -212,6 +276,18 @@ const uploadCsv = async ({ eventId, csv }, user) => {
       groupSize: Number(record.group_size || record.groupSize || 1)
     }, user));
   }
+
+  await auditService.enqueueAuditLog({
+    eventId,
+    userId: user.id,
+    action: 'GUEST_CSV_IMPORTED',
+    entityType: 'GuestImport',
+    entityId: eventId,
+    metadata: {
+      inserted: guests.length,
+      importedBy: user.id
+    }
+  });
 
   return {
     inserted: guests.length,

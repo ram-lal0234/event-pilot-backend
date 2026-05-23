@@ -121,6 +121,19 @@ const processPlivoEvent = async (payload) => {
     lastEventAt: new Date()
   });
 
+  await auditService.enqueueAuditLog({
+    eventId: call.eventId,
+    action: 'CALL_STATUS_UPDATED',
+    entityType: 'Call',
+    entityId: call.id,
+    metadata: {
+      callUuid,
+      eventType,
+      previousStatus: call.status,
+      nextStatus
+    }
+  });
+
   return { processed: true, callUuid, eventType, status: nextStatus };
 };
 

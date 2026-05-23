@@ -1,6 +1,7 @@
 const hotelRepository = require('../repositories/hotel.repository');
 const guestRepository = require('../repositories/guest.repository');
 const eventRepository = require('../repositories/event.repository');
+const auditService = require('./audit.service');
 const AppError = require('../utils/AppError');
 
 const createHotel = async (payload, user) => {
@@ -10,7 +11,22 @@ const createHotel = async (payload, user) => {
     throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
   }
 
-  return hotelRepository.createHotel(payload);
+  const hotel = await hotelRepository.createHotel(payload);
+
+  await auditService.enqueueAuditLog({
+    eventId: hotel.eventId,
+    userId: user.id,
+    action: 'HOTEL_CREATED',
+    entityType: 'Hotel',
+    entityId: hotel.id,
+    metadata: {
+      name: hotel.name,
+      address: hotel.address,
+      createdBy: user.id
+    }
+  });
+
+  return hotel;
 };
 
 const listHotels = async ({ eventId }, user) => {
@@ -36,11 +52,27 @@ const createRoom = async (payload, user) => {
     throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
   }
 
-  return hotelRepository.createRoom({
+  const room = await hotelRepository.createRoom({
     hotelId: payload.hotelId,
     roomNumber: payload.roomNumber,
     capacity: payload.capacity
   });
+
+  await auditService.enqueueAuditLog({
+    eventId: hotel.eventId,
+    userId: user.id,
+    action: 'ROOM_CREATED',
+    entityType: 'Room',
+    entityId: room.id,
+    metadata: {
+      hotelId: hotel.id,
+      roomNumber: room.roomNumber,
+      capacity: room.capacity,
+      createdBy: user.id
+    }
+  });
+
+  return room;
 };
 
 const assignGuest = async ({ roomId, guestId }, user) => {
@@ -69,12 +101,29 @@ const assignGuest = async ({ roomId, guestId }, user) => {
     throw new AppError('Room capacity exceeded', 409, 'ROOM_CAPACITY_EXCEEDED');
   }
 
-  return hotelRepository.assignGuest({
+  const assignment = await hotelRepository.assignGuest({
     eventId: room.hotel.eventId,
     roomId,
     guestId,
     assignedMembers: guest.groupSize
   });
+
+  await auditService.enqueueAuditLog({
+    eventId: room.hotel.eventId,
+    userId: user.id,
+    action: 'GUEST_ASSIGNED_TO_ROOM',
+    entityType: 'RoomAssignment',
+    entityId: assignment.id,
+    metadata: {
+      roomId,
+      hotelId: room.hotel.id,
+      guestId,
+      assignedMembers: guest.groupSize,
+      assignedBy: user.id
+    }
+  });
+
+  return assignment;
 };
 
 module.exports = {

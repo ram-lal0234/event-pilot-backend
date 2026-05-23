@@ -44,7 +44,15 @@ const addSqsJob = async (type, payload, options = {}) => {
     ...(options.delaySeconds ? { DelaySeconds: options.delaySeconds } : {})
   });
 
-  return getSqsClient().send(command);
+  const result = await getSqsClient().send(command);
+
+  logger.info('SQS job enqueued', {
+    type,
+    queueName,
+    messageId: result.MessageId
+  });
+
+  return result;
 };
 
 const addLocalJob = async (type, payload) => {
