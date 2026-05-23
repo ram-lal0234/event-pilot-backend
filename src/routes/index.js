@@ -2,6 +2,7 @@ const express = require('express');
 const authRoutes = require('../modules/auth/auth.routes');
 const eventRoutes = require('../modules/event/event.routes');
 const guestRoutes = require('../modules/guest/guest.routes');
+const callRoutes = require('../modules/call/call.routes');
 const ivrRoutes = require('../modules/ivr/ivr.routes');
 const cabRoutes = require('../modules/cab/cab.routes');
 const hotelRoutes = require('../modules/hotel/hotel.routes');
@@ -20,6 +21,7 @@ router.get('/health', (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/events', eventRoutes);
 router.use('/guests', guestRoutes);
+router.use('/call', callRoutes);
 router.use('/ivr', ivrRoutes);
 router.use('/cabs', cabRoutes);
 router.use('/hotels', hotelRoutes);

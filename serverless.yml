@@ -1,0 +1,133 @@
+service: event-pilot-backend
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ${opt:region, 'ap-south-1'}
+  stage: ${opt:stage, 'dev'}
+  httpApi:
+    cors:
+      allowedOrigins:
+        - ${env:FRONTEND_ORIGIN, '*'}
+      allowedHeaders:
+        - content-type
+        - authorization
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+  environment:
+    NODE_ENV: production
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+    QUEUE_PROVIDER: sqs
+    CALL_QUEUE_URL: !Ref CallQueue
+    EVENT_QUEUE_URL: !Ref EventQueue
+    DATABASE_URL: ${env:DATABASE_URL}
+    DIRECT_URL: ${env:DIRECT_URL}
+    JWT_SECRET: ${env:JWT_SECRET}
+    JWT_EXPIRES_IN: ${env:JWT_EXPIRES_IN, '7d'}
+    EMAIL_PROVIDER: ${env:EMAIL_PROVIDER, 'resend'}
+    RESEND_API_KEY: ${env:RESEND_API_KEY, ''}
+    EMAIL_FROM: ${env:EMAIL_FROM, ''}
+    PUBLIC_API_URL: ${env:PUBLIC_API_URL, ''}
+    PLIVO_AUTH_ID: ${env:PLIVO_AUTH_ID, ''}
+    PLIVO_AUTH_TOKEN: ${env:PLIVO_AUTH_TOKEN, ''}
+    PLIVO_FROM_NUMBER: ${env:PLIVO_FROM_NUMBER, ''}
+    PLIVO_ANSWER_URL: ${env:PLIVO_ANSWER_URL, ''}
+    PLIVO_WEBHOOK_URL: ${env:PLIVO_WEBHOOK_URL, ''}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+          Resource:
+            - !GetAtt CallQueue.Arn
+            - !GetAtt EventQueue.Arn
+        - Effect: Allow
+          Action:
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource:
+            - !GetAtt CallQueue.Arn
+            - !GetAtt EventQueue.Arn
+
+functions:
+  core:
+    handler: src/lambda/core.handler
+    events:
+      - httpApi:
+          method: ANY
+          path: /api/{proxy+}
+
+  webhook:
+    handler: src/lambda/webhook.handler
+    events:
+      - httpApi:
+          method: POST
+          path: /webhook/plivo
+
+  dialer:
+    handler: src/lambda/dialer.handler
+
+  processor:
+    handler: src/lambda/processor.handler
+
+resources:
+  Resources:
+    CallQueueDlq:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-call-dlq
+        MessageRetentionPeriod: 1209600
+
+    EventQueueDlq:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-event-dlq
+        MessageRetentionPeriod: 1209600
+
+    CallQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-call
+        VisibilityTimeout: 60
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt CallQueueDlq.Arn
+          maxReceiveCount: 5
+
+    EventQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-event
+        VisibilityTimeout: 60
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt EventQueueDlq.Arn
+          maxReceiveCount: 5
+
+    DialerQueueMapping:
+      Type: AWS::Lambda::EventSourceMapping
+      Properties:
+        EventSourceArn: !GetAtt CallQueue.Arn
+        FunctionName: !GetAtt DialerLambdaFunction.Arn
+        BatchSize: 5
+        FunctionResponseTypes:
+          - ReportBatchItemFailures
+        ScalingConfig:
+          MaximumConcurrency: ${env:DIALER_MAX_QUEUE_CONCURRENCY, 5}
+
+    ProcessorQueueMapping:
+      Type: AWS::Lambda::EventSourceMapping
+      Properties:
+        EventSourceArn: !GetAtt EventQueue.Arn
+        FunctionName: !GetAtt ProcessorLambdaFunction.Arn
+        BatchSize: 5
+        FunctionResponseTypes:
+          - ReportBatchItemFailures
+        ScalingConfig:
+          MaximumConcurrency: ${env:PROCESSOR_MAX_QUEUE_CONCURRENCY, 5}
