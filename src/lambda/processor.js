@@ -1,6 +1,8 @@
-const ivrService = require('../services/ivr.service');
+const fromShared = require('./shared');
 const { processBatch } = require('./sqs-utils');
-const logger = require('../utils/logger');
+
+const ivrService = fromShared('services/ivr.service');
+const logger = fromShared('utils/logger');
 
 const handleEventJob = async (payload) => {
   const result = await ivrService.processPlivoEvent(payload);

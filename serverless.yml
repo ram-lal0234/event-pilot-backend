@@ -1,9 +1,38 @@
 service: event-pilot-backend
 frameworkVersion: '3'
 
+package:
+  individually: true
+  patterns:
+    - '!node_modules/**'
+    - '!layers/**'
+    - '!.env'
+    - '!.env.*'
+    - '!.github/**'
+    - '!.serverless/**'
+    - '!coverage/**'
+    - '!dist/**'
+    - '!prisma/migrations/**'
+    - '!deploy.sh'
+
+layers:
+  dependencies:
+    path: layers/dependencies
+    name: ${self:service}-${sls:stage}-dependencies
+    description: Production node_modules shared by EventPilot Lambda functions
+    compatibleArchitectures:
+      - arm64
+  sharedCode:
+    path: layers/shared-code
+    name: ${self:service}-${sls:stage}-shared-code
+    description: Shared EventPilot application source used by Lambda handlers
+    compatibleArchitectures:
+      - arm64
+
 provider:
   name: aws
-  runtime: nodejs20.x
+  runtime: nodejs24.x
+  architecture: arm64
   region: ${opt:region, 'ap-south-1'}
   stage: ${opt:stage, 'dev'}
   httpApi:
@@ -26,6 +55,8 @@ provider:
     QUEUE_PROVIDER: sqs
     CALL_QUEUE_URL: !Ref CallQueue
     EVENT_QUEUE_URL: !Ref EventQueue
+    AUDIT_QUEUE_URL: !Ref AuditQueue
+    AUDIT_LOG_TABLE_NAME: !Ref AuditLogTable
     DATABASE_URL: ${env:DATABASE_URL}
     DIRECT_URL: ${env:DIRECT_URL}
     JWT_SECRET: ${env:JWT_SECRET}
@@ -48,6 +79,7 @@ provider:
           Resource:
             - !GetAtt CallQueue.Arn
             - !GetAtt EventQueue.Arn
+            - !GetAtt AuditQueue.Arn
         - Effect: Allow
           Action:
             - sqs:ReceiveMessage
@@ -56,6 +88,17 @@ provider:
           Resource:
             - !GetAtt CallQueue.Arn
             - !GetAtt EventQueue.Arn
+            - !GetAtt AuditQueue.Arn
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:Query
+          Resource:
+            - !GetAtt AuditLogTable.Arn
+            - !Sub '${AuditLogTable.Arn}/index/*'
+  layers:
+    - !Ref DependenciesLambdaLayer
+    - !Ref SharedCodeLambdaLayer
 
 functions:
   core:
@@ -78,6 +121,9 @@ functions:
   processor:
     handler: src/lambda/processor.handler
 
+  auditProcessor:
+    handler: src/lambda/audit-processor.handler
+
 resources:
   Resources:
     CallQueueDlq:
@@ -90,6 +136,12 @@ resources:
       Type: AWS::SQS::Queue
       Properties:
         QueueName: ${self:service}-${sls:stage}-event-dlq
+        MessageRetentionPeriod: 1209600
+
+    AuditQueueDlq:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-audit-dlq
         MessageRetentionPeriod: 1209600
 
     CallQueue:
@@ -109,6 +161,50 @@ resources:
         RedrivePolicy:
           deadLetterTargetArn: !GetAtt EventQueueDlq.Arn
           maxReceiveCount: 5
+
+    AuditQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-audit
+        VisibilityTimeout: 60
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt AuditQueueDlq.Arn
+          maxReceiveCount: 5
+
+    AuditLogTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-${sls:stage}-audit-logs
+        BillingMode: PROVISIONED
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        AttributeDefinitions:
+          - AttributeName: pk
+            AttributeType: S
+          - AttributeName: sk
+            AttributeType: S
+          - AttributeName: gsi1pk
+            AttributeType: S
+          - AttributeName: gsi1sk
+            AttributeType: S
+        KeySchema:
+          - AttributeName: pk
+            KeyType: HASH
+          - AttributeName: sk
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: entity-index
+            KeySchema:
+              - AttributeName: gsi1pk
+                KeyType: HASH
+              - AttributeName: gsi1sk
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
 
     DialerQueueMapping:
       Type: AWS::Lambda::EventSourceMapping
@@ -131,3 +227,14 @@ resources:
           - ReportBatchItemFailures
         ScalingConfig:
           MaximumConcurrency: ${env:PROCESSOR_MAX_QUEUE_CONCURRENCY, 5}
+
+    AuditQueueMapping:
+      Type: AWS::Lambda::EventSourceMapping
+      Properties:
+        EventSourceArn: !GetAtt AuditQueue.Arn
+        FunctionName: !GetAtt AuditProcessorLambdaFunction.Arn
+        BatchSize: 10
+        FunctionResponseTypes:
+          - ReportBatchItemFailures
+        ScalingConfig:
+          MaximumConcurrency: ${env:AUDIT_MAX_QUEUE_CONCURRENCY, 2}

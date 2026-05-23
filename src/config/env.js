@@ -16,6 +16,8 @@ const envSchema = Joi.object({
   QUEUE_PROVIDER: Joi.string().valid('sqs', 'local').default('local'),
   CALL_QUEUE_URL: Joi.string().uri().allow('', null),
   EVENT_QUEUE_URL: Joi.string().uri().allow('', null),
+  AUDIT_QUEUE_URL: Joi.string().uri().allow('', null),
+  AUDIT_LOG_TABLE_NAME: Joi.string().allow('', null),
   PLIVO_AUTH_ID: Joi.string().allow('', null),
   PLIVO_AUTH_TOKEN: Joi.string().allow('', null),
   PLIVO_FROM_NUMBER: Joi.string().allow('', null),
@@ -38,8 +40,8 @@ if (value.EMAIL_PROVIDER === 'resend' && (!value.RESEND_API_KEY || !value.EMAIL_
   throw new Error('Invalid environment configuration: "RESEND_API_KEY" and "EMAIL_FROM" are required when EMAIL_PROVIDER is "resend"');
 }
 
-if (value.QUEUE_PROVIDER === 'sqs' && (!value.CALL_QUEUE_URL || !value.EVENT_QUEUE_URL)) {
-  throw new Error('Invalid environment configuration: "CALL_QUEUE_URL" and "EVENT_QUEUE_URL" are required when QUEUE_PROVIDER is "sqs"');
+if (value.QUEUE_PROVIDER === 'sqs' && (!value.CALL_QUEUE_URL || !value.EVENT_QUEUE_URL || !value.AUDIT_QUEUE_URL)) {
+  throw new Error('Invalid environment configuration: "CALL_QUEUE_URL", "EVENT_QUEUE_URL", and "AUDIT_QUEUE_URL" are required when QUEUE_PROVIDER is "sqs"');
 }
 
 module.exports = {
@@ -55,8 +57,10 @@ module.exports = {
   queueProvider: value.QUEUE_PROVIDER,
   queues: {
     call: value.CALL_QUEUE_URL || undefined,
-    event: value.EVENT_QUEUE_URL || undefined
+    event: value.EVENT_QUEUE_URL || undefined,
+    audit: value.AUDIT_QUEUE_URL || undefined
   },
+  auditLogTableName: value.AUDIT_LOG_TABLE_NAME || undefined,
   plivo: {
     authId: value.PLIVO_AUTH_ID || undefined,
     authToken: value.PLIVO_AUTH_TOKEN || undefined,

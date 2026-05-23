@@ -1,7 +1,9 @@
-const queueService = require('../queue/queue.service');
+const fromShared = require('./shared');
 const { getPublicUrl, normalizeHeaders, parseBody, response } = require('./http-utils');
-const { validatePlivoSignature } = require('../services/plivo-signature.service');
-const logger = require('../utils/logger');
+
+const queueService = fromShared('queue/queue.service');
+const { validatePlivoSignature } = fromShared('services/plivo-signature.service');
+const logger = fromShared('utils/logger');
 
 module.exports.handler = async (event) => {
   try {

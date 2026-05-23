@@ -1,7 +1,9 @@
-const callRepository = require('../repositories/call.repository');
-const plivoService = require('../services/plivo.service');
+const fromShared = require('./shared');
 const { processBatch } = require('./sqs-utils');
-const logger = require('../utils/logger');
+
+const callRepository = fromShared('repositories/call.repository');
+const plivoService = fromShared('services/plivo.service');
+const logger = fromShared('utils/logger');
 
 const handleCallJob = async (job) => {
   const call = await callRepository.findById(job.callId);

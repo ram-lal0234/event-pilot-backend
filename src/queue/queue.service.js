@@ -4,7 +4,8 @@ const logger = require('../utils/logger');
 const queueMap = {
   ivr: 'call',
   call: 'call',
-  event: 'event'
+  event: 'event',
+  audit: 'audit'
 };
 
 let sqsClient;
