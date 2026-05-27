@@ -1,6 +1,6 @@
 # EventPilot AI (CamRSVP) Backend
 
-Production-ready Node.js, Express, PostgreSQL, Prisma, Joi, JWT, and BullMQ backend for event RSVP, QR check-in, transport, hotel assignment, IVR workflows, and dashboard feeds.
+Production-ready Node.js, Express, PostgreSQL, Prisma, Joi, JWT, AWS SQS, and Lambda-ready backend for event RSVP, QR check-in, transport, hotel assignment, IVR workflows, and dashboard feeds.
 
 ## Quick Start
 
@@ -19,15 +19,19 @@ For Supabase, keep two database URLs:
 
 Prisma migrations should use `DIRECT_URL` through `directUrl` in `prisma/schema.prisma`; runtime app queries continue using `DATABASE_URL`.
 
-Run queue workers in a separate process:
-
-```bash
-npm run worker
-```
-
 Local development defaults to `QUEUE_PROVIDER=local`, which writes audit logs
-synchronously and logs mock IVR/notification jobs without requiring Redis. Use
-`QUEUE_PROVIDER=bullmq` when Redis is running and you want real BullMQ queues.
+synchronously and logs queued call/webhook jobs without requiring AWS. In AWS,
+set `QUEUE_PROVIDER=sqs`, `CALL_QUEUE_URL`, and `EVENT_QUEUE_URL`.
+
+Lambda handlers:
+
+- Core Express API: `src/lambda/core.handler`
+- Plivo webhook ingest: `src/lambda/webhook.handler`
+- Call queue worker: `src/lambda/dialer.handler`
+- Plivo event queue processor: `src/lambda/processor.handler`
+
+`serverless.yml` wires the HTTP API routes, SQS queues, DLQs, SQS partial-batch
+responses, and reserved/max concurrency defaults for the MVP AWS deployment.
 
 Working vertical slice:
 

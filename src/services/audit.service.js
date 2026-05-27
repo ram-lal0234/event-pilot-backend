@@ -1,48 +1,44 @@
-const env = require('../config/env');
 const queueService = require('../queue/queue.service');
-const prisma = require('../config/db');
+const auditRepository = require('../repositories/audit.repository');
+const env = require('../config/env');
 const logger = require('../utils/logger');
 
-const writeAuditLog = ({ eventId, userId, action, entityType, entityId, metadata = {} }) => {
-  return prisma.auditLog.create({
-    data: {
-      eventId,
-      userId,
-      action,
-      entityType,
-      entityId,
-      metadata
-    }
+const logAuditEvent = (message, payload, extra = {}) => {
+  logger.info(message, {
+    action: payload.action,
+    eventId: payload.eventId,
+    userId: payload.userId,
+    entityType: payload.entityType,
+    entityId: payload.entityId,
+    ...extra
   });
 };
 
-const enqueueAuditLog = async ({ eventId, userId, action, entityType, entityId, metadata = {} }) => {
+const writeAuditLog = async (payload) => {
+  const item = await auditRepository.create(payload);
+  logAuditEvent('Audit log persisted', payload, { auditLogId: item.id });
+  return item;
+};
+
+const enqueueAuditLog = async (payload) => {
   if (env.queueProvider === 'local') {
-    await writeAuditLog({ eventId, userId, action, entityType, entityId, metadata });
+    logAuditEvent('Audit log recorded locally', payload);
     return;
   }
 
   try {
-    await queueService.addJob('audit', {
-      eventId,
-      userId,
-      action,
-      entityType,
-      entityId,
-      metadata
-    });
+    const result = await queueService.addJob('audit', payload);
+    logAuditEvent('Audit log queued', payload, { messageId: result?.MessageId });
   } catch (error) {
-    logger.warn('Audit queue unavailable; writing audit log synchronously', {
-      error: error.message,
-      action,
-      entityType,
-      entityId
+    logger.error(error, {
+      action: payload.action,
+      entityType: payload.entityType,
+      entityId: payload.entityId
     });
-
-    await writeAuditLog({ eventId, userId, action, entityType, entityId, metadata });
   }
 };
 
 module.exports = {
-  enqueueAuditLog
+  enqueueAuditLog,
+  writeAuditLog
 };

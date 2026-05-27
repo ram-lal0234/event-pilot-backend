@@ -1,6 +1,7 @@
 const cabRepository = require('../repositories/cab.repository');
 const guestRepository = require('../repositories/guest.repository');
 const eventRepository = require('../repositories/event.repository');
+const auditService = require('./audit.service');
 const AppError = require('../utils/AppError');
 
 const createCab = async (payload, user) => {
@@ -10,12 +11,28 @@ const createCab = async (payload, user) => {
     throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
   }
 
-  return cabRepository.create({
+  const cab = await cabRepository.create({
     eventId: payload.eventId,
     driverName: payload.driverName,
     vehicleNumber: payload.vehicleNumber,
     capacity: payload.capacity
   });
+
+  await auditService.enqueueAuditLog({
+    eventId: cab.eventId,
+    userId: user.id,
+    action: 'CAB_CREATED',
+    entityType: 'Cab',
+    entityId: cab.id,
+    metadata: {
+      driverName: cab.driverName,
+      vehicleNumber: cab.vehicleNumber,
+      capacity: cab.capacity,
+      createdBy: user.id
+    }
+  });
+
+  return cab;
 };
 
 const listCabs = async ({ eventId }, user) => {
@@ -62,6 +79,20 @@ const assignGuest = async ({ cabId, guestId }, user) => {
   if (!assignment) {
     throw new AppError('Cab capacity exceeded', 409, 'CAB_CAPACITY_EXCEEDED');
   }
+
+  await auditService.enqueueAuditLog({
+    eventId: cab.eventId,
+    userId: user.id,
+    action: 'GUEST_ASSIGNED_TO_CAB',
+    entityType: 'CabAssignment',
+    entityId: assignment.id,
+    metadata: {
+      cabId,
+      guestId,
+      seats: guest.groupSize,
+      assignedBy: user.id
+    }
+  });
 
   return assignment;
 };

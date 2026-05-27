@@ -4,6 +4,7 @@ const prisma = require('../config/db');
 const env = require('../config/env');
 const AppError = require('../utils/AppError');
 const emailService = require('./email.service');
+const auditService = require('./audit.service');
 
 const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
@@ -20,6 +21,15 @@ const requestLoginOtp = async ({ email }) => {
   });
 
   await emailService.sendOtpEmail({ email, otp });
+
+  await auditService.enqueueAuditLog({
+    action: 'LOGIN_OTP_REQUESTED',
+    entityType: 'Auth',
+    entityId: email,
+    metadata: {
+      email
+    }
+  });
 
   return {
     email,
@@ -51,6 +61,17 @@ const verifyOtp = async ({ email, otp }) => {
     where: { email },
     create: { email, role: 'ADMIN' },
     update: {}
+  });
+
+  await auditService.enqueueAuditLog({
+    userId: user.id,
+    action: 'LOGIN_VERIFIED',
+    entityType: 'User',
+    entityId: user.id,
+    metadata: {
+      email: user.email,
+      role: user.role
+    }
   });
 
   const accessToken = jwt.sign(
