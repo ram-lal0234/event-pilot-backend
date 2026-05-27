@@ -4,8 +4,7 @@ const QRCode = require('qrcode');
 const guestRepository = require('../repositories/guest.repository');
 const eventRepository = require('../repositories/event.repository');
 const auditService = require('./audit.service');
-const queueService = require('../queue/queue.service');
-const callRepository = require('../repositories/call.repository');
+const voiceCallService = require('./voice-call.service');
 const AppError = require('../utils/AppError');
 
 const assertEventAccess = async (eventId, user) => {
@@ -218,38 +217,7 @@ const triggerIvr = async (guestId, user) => {
 
   await assertEventAccess(guest.eventId, user);
 
-  if (guest.rsvpStatus !== 'PENDING') {
-    throw new AppError('IVR can only be triggered for guests with pending RSVP.', 409, 'IVR_NOT_ALLOWED_FOR_RSVP_STATUS');
-  }
-
-  const call = await callRepository.create({
-    eventId: guest.eventId,
-    guestId: guest.id,
-    phone: guest.phone,
-    status: 'QUEUED'
-  });
-
-  await queueService.addJob('call', {
-    callId: call.id,
-    guestId: guest.id,
-    eventId: guest.eventId,
-    phone: guest.phone
-  });
-
-  await auditService.enqueueAuditLog({
-    eventId: guest.eventId,
-    userId: user.id,
-    action: 'IVR_CALL_QUEUED',
-    entityType: 'Call',
-    entityId: call.id,
-    metadata: {
-      guestId: guest.id,
-      status: call.status,
-      queuedBy: user.id
-    }
-  });
-
-  return { queued: true, callId: call.id };
+  return voiceCallService.triggerOutboundCall(guestId, user);
 };
 
 const uploadCsv = async ({ eventId, csv }, user) => {

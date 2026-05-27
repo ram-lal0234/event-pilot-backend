@@ -8,6 +8,7 @@ const cabRoutes = require('../modules/cab/cab.routes');
 const hotelRoutes = require('../modules/hotel/hotel.routes');
 const qrRoutes = require('../modules/qr/qr.routes');
 const dashboardRoutes = require('../modules/dashboard/dashboard.routes');
+const voiceRoutes = require('../modules/voice/voice.routes');
 
 const router = express.Router();
 
@@ -27,5 +28,6 @@ router.use('/cabs', cabRoutes);
 router.use('/hotels', hotelRoutes);
 router.use('/checkin', qrRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/voice', voiceRoutes);
 
 module.exports = router;

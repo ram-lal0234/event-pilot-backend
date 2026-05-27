@@ -22,6 +22,22 @@ const findById = (id) => {
   });
 };
 
+const findByIdWithEvent = (id) => {
+  return prisma.guest.findUnique({
+    where: { id },
+    include: {
+      event: {
+        select: {
+          id: true,
+          name: true,
+          date: true,
+          location: true
+        }
+      }
+    }
+  });
+};
+
 const findByQrCode = (qrCode) => {
   return prisma.guest.findUnique({
     where: { qrCode }
@@ -94,6 +110,7 @@ const remove = (id) => {
 module.exports = {
   create,
   findById,
+  findByIdWithEvent,
   findByQrCode,
   findMany,
   findManyPaginated,

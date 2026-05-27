@@ -22,8 +22,14 @@ const envSchema = Joi.object({
   PLIVO_AUTH_TOKEN: Joi.string().allow('', null),
   PLIVO_FROM_NUMBER: Joi.string().allow('', null),
   PLIVO_ANSWER_URL: Joi.string().uri().allow('', null),
+  PLIVO_IVR_ANSWER_URL: Joi.string().uri().allow('', null),
+  PLIVO_AI_ANSWER_URL: Joi.string().uri().allow('', null),
   PLIVO_WEBHOOK_URL: Joi.string().uri().allow('', null),
-  PUBLIC_API_URL: Joi.string().uri().allow('', null)
+  PUBLIC_API_URL: Joi.string().uri().allow('', null),
+  VOICE_DEFAULT_CALL_MODE: Joi.string().valid('ai', 'ivr', '').allow('', null),
+  VOICE_AI_WEBHOOK_SECRET: Joi.string().allow('', null),
+  VOICE_TRANSPORT_ENABLED: Joi.string().valid('true', 'false', '1', '0', '').allow('', null),
+  VOICE_HOTEL_ENABLED: Joi.string().valid('true', 'false', '1', '0', '').allow('', null)
 }).unknown(true);
 
 const { value, error } = envSchema.validate(process.env, { abortEarly: false });
@@ -66,7 +72,13 @@ module.exports = {
     authToken: value.PLIVO_AUTH_TOKEN || undefined,
     fromNumber: value.PLIVO_FROM_NUMBER || undefined,
     answerUrl: value.PLIVO_ANSWER_URL || undefined,
+    ivrAnswerUrl: value.PLIVO_IVR_ANSWER_URL || value.PLIVO_ANSWER_URL || undefined,
+    aiAnswerUrl: value.PLIVO_AI_ANSWER_URL || undefined,
     webhookUrl: value.PLIVO_WEBHOOK_URL || undefined
   },
-  publicApiUrl: value.PUBLIC_API_URL || undefined
+  publicApiUrl: value.PUBLIC_API_URL || undefined,
+  voiceDefaultCallMode: value.VOICE_DEFAULT_CALL_MODE || undefined,
+  voiceAiWebhookSecret: value.VOICE_AI_WEBHOOK_SECRET || undefined,
+  voiceTransportEnabled: value.VOICE_TRANSPORT_ENABLED || undefined,
+  voiceHotelEnabled: value.VOICE_HOTEL_ENABLED || undefined
 };

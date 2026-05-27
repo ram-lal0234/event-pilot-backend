@@ -19,9 +19,11 @@ For Supabase, keep two database URLs:
 
 Prisma migrations should use `DIRECT_URL` through `directUrl` in `prisma/schema.prisma`; runtime app queries continue using `DATABASE_URL`.
 
-Local development defaults to `QUEUE_PROVIDER=local`, which writes audit logs
-synchronously and logs queued call/webhook jobs without requiring AWS. In AWS,
-set `QUEUE_PROVIDER=sqs`, `CALL_QUEUE_URL`, and `EVENT_QUEUE_URL`.
+Local development defaults to `QUEUE_PROVIDER=local`, which records audit events
+in application logs only (not DynamoDB) and logs queued call/webhook jobs without
+requiring AWS. `/api/dashboard/feed` returns an empty list in that mode. In AWS,
+set `QUEUE_PROVIDER=sqs`, queue URLs, and `AUDIT_LOG_TABLE_NAME` (see
+`serverless.yml`).
 
 Lambda handlers:
 
@@ -32,6 +34,36 @@ Lambda handlers:
 
 `serverless.yml` wires the HTTP API routes, SQS queues, DLQs, SQS partial-batch
 responses, and reserved/max concurrency defaults for the MVP AWS deployment.
+
+## Voice calls (IVR + AI agent)
+
+Dashboard **Trigger IVR** (`POST /api/ivr/call`) queues an outbound Plivo call. Mode is chosen by backend (not shown in UI):
+
+- `VOICE_DEFAULT_CALL_MODE=ai` → uses `PLIVO_AI_ANSWER_URL` (Plivo Vibe / conversational agent)
+- `VOICE_DEFAULT_CALL_MODE=ivr` → uses `PLIVO_IVR_ANSWER_URL` (XML `GetDigits` on this API)
+
+With `QUEUE_PROVIDER=local`, the call is dialed immediately after queueing (no separate worker).
+
+**AI RSVP webhook** (configure in Plivo Vibe):
+
+`POST {PUBLIC_API_URL}/api/voice/ai/result`
+
+Optional header: `X-EventPilot-Voice-Secret` when `VOICE_AI_WEBHOOK_SECRET` is set.
+
+**IVR XML endpoints:**
+
+- `{PUBLIC_API_URL}/api/voice/ivr/answer`
+- `{PUBLIC_API_URL}/api/voice/ivr/digit`
+
+Example `.env` for AI testing with ngrok:
+
+```bash
+PUBLIC_API_URL=https://your-subdomain.ngrok-free.app
+PLIVO_AI_ANSWER_URL=https://your-published-plivo-agent-answer-url
+VOICE_DEFAULT_CALL_MODE=ai
+VOICE_TRANSPORT_ENABLED=true
+VOICE_HOTEL_ENABLED=true
+```
 
 Working vertical slice:
 
