@@ -1,5 +1,7 @@
 node_modules/
 .env
+.serverless/
+layers/
 dist/
 coverage/
 *.log

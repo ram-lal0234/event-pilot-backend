@@ -12,10 +12,18 @@ const envSchema = Joi.object({
   EMAIL_PROVIDER: Joi.string().valid('mock', 'resend').default('mock'),
   RESEND_API_KEY: Joi.string().allow('', null),
   EMAIL_FROM: Joi.string().allow('', null),
-  REDIS_HOST: Joi.string().default('127.0.0.1'),
-  REDIS_PORT: Joi.number().port().default(6379),
-  REDIS_PASSWORD: Joi.string().allow('', null),
-  QUEUE_PROVIDER: Joi.string().valid('bullmq', 'sqs', 'local').default('local')
+  AWS_REGION: Joi.string().default('ap-south-1'),
+  QUEUE_PROVIDER: Joi.string().valid('sqs', 'local').default('local'),
+  CALL_QUEUE_URL: Joi.string().uri().allow('', null),
+  EVENT_QUEUE_URL: Joi.string().uri().allow('', null),
+  AUDIT_QUEUE_URL: Joi.string().uri().allow('', null),
+  AUDIT_LOG_TABLE_NAME: Joi.string().allow('', null),
+  PLIVO_AUTH_ID: Joi.string().allow('', null),
+  PLIVO_AUTH_TOKEN: Joi.string().allow('', null),
+  PLIVO_FROM_NUMBER: Joi.string().allow('', null),
+  PLIVO_ANSWER_URL: Joi.string().uri().allow('', null),
+  PLIVO_WEBHOOK_URL: Joi.string().uri().allow('', null),
+  PUBLIC_API_URL: Joi.string().uri().allow('', null)
 }).unknown(true);
 
 const { value, error } = envSchema.validate(process.env, { abortEarly: false });
@@ -32,6 +40,10 @@ if (value.EMAIL_PROVIDER === 'resend' && (!value.RESEND_API_KEY || !value.EMAIL_
   throw new Error('Invalid environment configuration: "RESEND_API_KEY" and "EMAIL_FROM" are required when EMAIL_PROVIDER is "resend"');
 }
 
+if (value.QUEUE_PROVIDER === 'sqs' && (!value.CALL_QUEUE_URL || !value.EVENT_QUEUE_URL || !value.AUDIT_QUEUE_URL)) {
+  throw new Error('Invalid environment configuration: "CALL_QUEUE_URL", "EVENT_QUEUE_URL", and "AUDIT_QUEUE_URL" are required when QUEUE_PROVIDER is "sqs"');
+}
+
 module.exports = {
   nodeEnv: value.NODE_ENV,
   port: value.PORT,
@@ -41,10 +53,20 @@ module.exports = {
   emailProvider: value.EMAIL_PROVIDER,
   resendApiKey: value.RESEND_API_KEY || undefined,
   emailFrom: value.EMAIL_FROM || undefined,
-  redis: {
-    host: value.REDIS_HOST,
-    port: value.REDIS_PORT,
-    password: value.REDIS_PASSWORD || undefined
+  awsRegion: value.AWS_REGION,
+  queueProvider: value.QUEUE_PROVIDER,
+  queues: {
+    call: value.CALL_QUEUE_URL || undefined,
+    event: value.EVENT_QUEUE_URL || undefined,
+    audit: value.AUDIT_QUEUE_URL || undefined
   },
-  queueProvider: value.QUEUE_PROVIDER
+  auditLogTableName: value.AUDIT_LOG_TABLE_NAME || undefined,
+  plivo: {
+    authId: value.PLIVO_AUTH_ID || undefined,
+    authToken: value.PLIVO_AUTH_TOKEN || undefined,
+    fromNumber: value.PLIVO_FROM_NUMBER || undefined,
+    answerUrl: value.PLIVO_ANSWER_URL || undefined,
+    webhookUrl: value.PLIVO_WEBHOOK_URL || undefined
+  },
+  publicApiUrl: value.PUBLIC_API_URL || undefined
 };

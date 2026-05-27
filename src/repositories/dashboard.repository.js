@@ -1,4 +1,5 @@
 const prisma = require('../config/db');
+const auditRepository = require('./audit.repository');
 
 const summary = async (eventId) => {
   const [totalGuests, confirmed, checkedIn, pendingPickups] = await Promise.all([
@@ -23,11 +24,7 @@ const summary = async (eventId) => {
 };
 
 const liveFeed = (eventId) => {
-  return prisma.auditLog.findMany({
-    where: { eventId },
-    orderBy: { createdAt: 'desc' },
-    take: 25
-  });
+  return auditRepository.findByEvent(eventId, 25);
 };
 
 module.exports = {

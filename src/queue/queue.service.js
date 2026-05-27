@@ -1,29 +1,58 @@
 const env = require('../config/env');
 const logger = require('../utils/logger');
-const { getQueue } = require('./bullmq');
 
 const queueMap = {
-  ivr: 'ivrQueue',
-  audit: 'auditQueue',
-  notification: 'notificationQueue'
+  ivr: 'call',
+  call: 'call',
+  event: 'event',
+  audit: 'audit'
 };
 
-const addBullMqJob = async (type, payload, options = {}) => {
+let sqsClient;
+
+const getSqsClient = () => {
+  if (!sqsClient) {
+    const { SQSClient } = require('@aws-sdk/client-sqs');
+    sqsClient = new SQSClient({ region: env.awsRegion });
+  }
+
+  return sqsClient;
+};
+
+const getQueueName = (type) => {
   const queueName = queueMap[type];
 
-  if (!queueName) {
+  if (!queueName || !env.queues[queueName]) {
     throw new Error(`Unsupported queue type: ${type}`);
   }
 
-  const queue = getQueue(queueName);
-  return queue.add(type, payload, options);
+  return queueName;
 };
 
-const addSqsJob = async (type, payload) => {
-  logger.info('SQS queue provider selected but not configured; job logged only', {
-    type,
-    payload
+const addSqsJob = async (type, payload, options = {}) => {
+  const { SendMessageCommand } = require('@aws-sdk/client-sqs');
+  const queueName = getQueueName(type);
+  const queueUrl = env.queues[queueName];
+
+  const command = new SendMessageCommand({
+    QueueUrl: queueUrl,
+    MessageBody: JSON.stringify({
+      type,
+      payload,
+      queuedAt: new Date().toISOString()
+    }),
+    ...(options.delaySeconds ? { DelaySeconds: options.delaySeconds } : {})
   });
+
+  const result = await getSqsClient().send(command);
+
+  logger.info('SQS job enqueued', {
+    type,
+    queueName,
+    messageId: result.MessageId
+  });
+
+  return result;
 };
 
 const addLocalJob = async (type, payload) => {
@@ -42,7 +71,7 @@ const addJob = async (type, payload, options = {}) => {
     return addLocalJob(type, payload, options);
   }
 
-  return addBullMqJob(type, payload, options);
+  throw new Error(`Unsupported queue provider: ${env.queueProvider}`);
 };
 
 module.exports = {
