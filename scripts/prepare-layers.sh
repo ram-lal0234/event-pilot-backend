@@ -63,6 +63,7 @@ if find "${DEPS_LAYER}/node_modules" -name 'libquery_engine-darwin-*' | grep -q 
   exit 1
 fi
 
+copy_src "${SHARED_LAYER}" "constants/plivo-webhook-routes.js"
 copy_src "${SHARED_LAYER}" "config/db.js"
 copy_src "${SHARED_LAYER}" "config/env.js"
 copy_src "${SHARED_LAYER}" "queue/queue.service.js"
@@ -76,10 +77,17 @@ copy_src "${SHARED_LAYER}" "services/ivr.service.js"
 copy_src "${SHARED_LAYER}" "services/call-dialer.service.js"
 copy_src "${SHARED_LAYER}" "services/voice-call.service.js"
 copy_src "${SHARED_LAYER}" "services/voice-ai.service.js"
+copy_src "${SHARED_LAYER}" "services/voice-ai-transcript.service.js"
+copy_src "${SHARED_LAYER}" "services/voice-ai-error.service.js"
 copy_src "${SHARED_LAYER}" "services/plivo.service.js"
 copy_src "${SHARED_LAYER}" "services/plivo-signature.service.js"
+copy_src "${SHARED_LAYER}" "services/plivo-webhook-auth.service.js"
+copy_src "${SHARED_LAYER}" "services/plivo-webhook-ingress.service.js"
+copy_src "${SHARED_LAYER}" "services/plivo-webhook-consumer.service.js"
+copy_src "${SHARED_LAYER}" "services/plivo-ivr-xml.service.js"
 copy_src "${SHARED_LAYER}" "utils/AppError.js"
 copy_src "${SHARED_LAYER}" "utils/logger.js"
+copy_src "${SHARED_LAYER}" "utils/phone.util.js"
 
 cp "${ROOT_DIR}/package.json" "${DEPS_LAYER}/package.json"
 cp "${ROOT_DIR}/package-lock.json" "${DEPS_LAYER}/package-lock.json"

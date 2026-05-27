@@ -20,7 +20,9 @@ const rank = {
 
 const normalizePlivoStatus = (payload = {}) => {
   const rawStatus = String(
-    payload.CallStatus
+    payload.eventType
+    || payload.event_type
+    || payload.CallStatus
     || payload.callStatus
     || payload.Event
     || payload.event

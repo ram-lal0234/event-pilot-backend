@@ -8,7 +8,9 @@ const AppError = require('../utils/AppError');
 const getCallUuid = (payload = {}) => payload.CallUUID || payload.callUuid || payload.call_uuid || payload.CallUuid;
 
 const getEventType = (payload = {}) => (
-  payload.Event
+  payload.eventType
+  || payload.event_type
+  || payload.Event
   || payload.event
   || payload.CallStatus
   || payload.callStatus

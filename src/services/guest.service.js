@@ -6,6 +6,18 @@ const eventRepository = require('../repositories/event.repository');
 const auditService = require('./audit.service');
 const voiceCallService = require('./voice-call.service');
 const AppError = require('../utils/AppError');
+const { normalizePhoneE164, inferDefaultCountryCode } = require('../utils/phone.util');
+const env = require('../config/env');
+
+const normalizeGuestPhone = (phone) => {
+  try {
+    return normalizePhoneE164(phone, {
+      defaultCountryCode: inferDefaultCountryCode(env.plivo?.fromNumber)
+    });
+  } catch (error) {
+    throw new AppError(error.message, 400, 'INVALID_PHONE');
+  }
+};
 
 const assertEventAccess = async (eventId, user) => {
   const hasAccess = await eventRepository.userCanAccessEvent(eventId, user);
@@ -56,7 +68,7 @@ const createGuest = async (payload, user) => {
     guest = await guestRepository.create({
       eventId: payload.eventId,
       name: payload.name,
-      phone: payload.phone,
+      phone: normalizeGuestPhone(payload.phone),
       email: payload.email || null,
       pickupLocation: payload.pickupLocation || null,
       pickupLat: payload.pickupLat,
@@ -121,7 +133,14 @@ const updateGuest = async (id, payload, user) => {
   }
 
   await assertEventAccess(guest.eventId, user);
-  const updatedGuest = await guestRepository.update(id, payload);
+
+  const updatePayload = { ...payload };
+
+  if (updatePayload.phone !== undefined) {
+    updatePayload.phone = normalizeGuestPhone(updatePayload.phone);
+  }
+
+  const updatedGuest = await guestRepository.update(id, updatePayload);
   const changes = pickChangedFields(guest, updatedGuest, [
     'name',
     'phone',
@@ -208,17 +227,7 @@ const deleteGuest = async (id, user) => {
   return { id };
 };
 
-const triggerIvr = async (guestId, user) => {
-  const guest = await guestRepository.findById(guestId);
-
-  if (!guest) {
-    throw new AppError('Guest not found', 404, 'GUEST_NOT_FOUND');
-  }
-
-  await assertEventAccess(guest.eventId, user);
-
-  return voiceCallService.triggerOutboundCall(guestId, user);
-};
+const triggerIvr = async (guestId, user, callMode) => voiceCallService.triggerOutboundCall(guestId, user, { callMode });
 
 const uploadCsv = async ({ eventId, csv }, user) => {
   await assertEventAccess(eventId, user);

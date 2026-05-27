@@ -6,6 +6,7 @@ const callRepository = require('../repositories/call.repository');
 const queueService = require('../queue/queue.service');
 const auditService = require('./audit.service');
 const callDialerService = require('./call-dialer.service');
+const { getPlivoAiWebhookUrl } = require('./plivo.service');
 const AppError = require('../utils/AppError');
 
 const formatEventDateSpoken = (date) => {
@@ -29,19 +30,34 @@ const parseBool = (value, fallback) => {
   return normalized === 'true' || normalized === '1' || normalized === 'yes';
 };
 
-const resolveCallMode = () => {
-  const configured = (env.voiceDefaultCallMode || '').toLowerCase();
-
-  if (configured === 'ai' || configured === 'ivr') {
-    if (configured === 'ai' && !env.plivo.aiAnswerUrl) {
+const assertCallModeConfigured = (callMode) => {
+  if (callMode === 'ai') {
+    if (!env.plivo.aiAnswerUrl) {
       throw new AppError(
-        'AI voice calls are not configured. Set PLIVO_AI_ANSWER_URL in the environment.',
+        'AI voice calls are not configured. Set PLIVO_AI_ANSWER_URL to your Plivo Agent Flow invoke URL.',
         503,
         'AI_VOICE_NOT_CONFIGURED'
       );
     }
 
-    return configured;
+    return;
+  }
+
+  if (!env.plivo.ivrAnswerUrl && !env.plivo.answerUrl) {
+    throw new AppError(
+      'IVR calls are not configured. Set PLIVO_IVR_ANSWER_URL in the environment.',
+      503,
+      'IVR_VOICE_NOT_CONFIGURED'
+    );
+  }
+};
+
+const resolveCallMode = (override) => {
+  const requested = (override || env.voiceDefaultCallMode || '').toLowerCase();
+
+  if (requested === 'ai' || requested === 'ivr') {
+    assertCallModeConfigured(requested);
+    return requested;
   }
 
   if (env.plivo.aiAnswerUrl) {
@@ -84,7 +100,11 @@ const buildAgentContext = async (guest) => {
     host_label: hostLabel,
     existing_pickup_location: guest.pickupLocation || '',
     transport_enabled: transportEnabled,
-    hotel_enabled: hotelEnabled
+    hotel_enabled: hotelEnabled,
+    rsvp_webhook_url: getPlivoAiWebhookUrl('ai/rsvp'),
+    hangup_webhook_url: getPlivoAiWebhookUrl('ai/hangup'),
+    transcript_webhook_url: getPlivoAiWebhookUrl('ai/transcript'),
+    error_webhook_url: getPlivoAiWebhookUrl('ai/error')
   };
 };
 
@@ -145,7 +165,7 @@ const assertEventAccess = async (eventId, user) => {
   }
 };
 
-const triggerOutboundCall = async (guestId, user) => {
+const triggerOutboundCall = async (guestId, user, { callMode: callModeOverride } = {}) => {
   const guest = await guestRepository.findById(guestId);
 
   if (!guest) {
@@ -175,7 +195,7 @@ const triggerOutboundCall = async (guestId, user) => {
     );
   }
 
-  const callMode = resolveCallMode();
+  const callMode = resolveCallMode(callModeOverride);
   return queueOutboundCall({ guest, user, callMode });
 };
 

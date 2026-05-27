@@ -46,19 +46,22 @@ const processCallJob = async (job) => {
       await callRepository.update(call.id, { callUuid });
     }
 
+    const isAi = (job.callMode || 'ivr') === 'ai';
+
     await auditService.enqueueAuditLog({
       eventId: call.eventId,
-      action: 'PLIVO_CALL_REQUESTED',
+      action: isAi ? 'AGENT_FLOW_CALL_REQUESTED' : 'PLIVO_CALL_REQUESTED',
       entityType: 'Call',
       entityId: call.id,
       metadata: {
         guestId: call.guestId,
         callUuid: callUuid || null,
-        callMode: job.callMode || 'ivr'
+        callMode: job.callMode || 'ivr',
+        ...(isAi ? { agentFlowMessage: result.message || null } : {})
       }
     });
 
-    logger.info('Plivo call requested', {
+    logger.info(isAi ? 'Plivo Agent Flow call requested' : 'Plivo IVR call requested', {
       callId: call.id,
       callUuid,
       callMode: job.callMode || 'ivr'

@@ -10,5 +10,6 @@ const router = express.Router();
 router.all('/ivr/answer', voiceIvrController.answer);
 router.all('/ivr/digit', voiceIvrController.digit);
 router.post('/ai/result', voiceWebhookAuth, validate({ body: aiResultSchema }), voiceAiController.applyResult);
+router.post('/ai/rsvp', voiceWebhookAuth, validate({ body: aiResultSchema }), voiceAiController.applyRsvp);
 
 module.exports = router;
