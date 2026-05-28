@@ -21,7 +21,7 @@ const createHotel = async (payload, user) => {
     entityId: hotel.id,
     metadata: {
       name: hotel.name,
-      address: hotel.address,
+      location: hotel.location,
       createdBy: user.id
     }
   });
@@ -55,7 +55,12 @@ const createRoom = async (payload, user) => {
   const room = await hotelRepository.createRoom({
     hotelId: payload.hotelId,
     roomNumber: payload.roomNumber,
-    capacity: payload.capacity
+    capacity: payload.capacity,
+    roomType: payload.roomType || null,
+    floor: payload.floor || null,
+    roomStatus: payload.roomStatus || null,
+    checkInDate: payload.checkInDate ? new Date(payload.checkInDate) : null,
+    checkOutDate: payload.checkOutDate ? new Date(payload.checkOutDate) : null
   });
 
   await auditService.enqueueAuditLog({
@@ -68,6 +73,9 @@ const createRoom = async (payload, user) => {
       hotelId: hotel.id,
       roomNumber: room.roomNumber,
       capacity: room.capacity,
+      roomType: room.roomType,
+      floor: room.floor,
+      roomStatus: room.roomStatus,
       createdBy: user.id
     }
   });
@@ -126,9 +134,36 @@ const assignGuest = async ({ roomId, guestId }, user) => {
   return assignment;
 };
 
+const unassignGuest = async ({ guestId }, user) => {
+  const assignment = await hotelRepository.findAssignmentByGuestId(guestId);
+  if (!assignment) {
+    throw new AppError('Room assignment not found', 404, 'ROOM_ASSIGNMENT_NOT_FOUND');
+  }
+
+  const hasAccess = await eventRepository.userCanAccessEvent(assignment.room.hotel.eventId, user);
+  if (!hasAccess) {
+    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
+  }
+
+  await hotelRepository.unassignGuest(assignment.id);
+  return { id: assignment.id };
+};
+
+const moveGuest = async ({ guestId, toRoomId }, user) => {
+  const existing = await hotelRepository.findAssignmentByGuestId(guestId);
+  if (!existing) {
+    throw new AppError('Room assignment not found', 404, 'ROOM_ASSIGNMENT_NOT_FOUND');
+  }
+
+  await unassignGuest({ guestId }, user);
+  return assignGuest({ roomId: toRoomId, guestId }, user);
+};
+
 module.exports = {
   createHotel,
   listHotels,
   createRoom,
-  assignGuest
+  assignGuest,
+  unassignGuest,
+  moveGuest
 };

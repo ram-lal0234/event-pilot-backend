@@ -66,6 +66,24 @@ const assignedMembers = async (roomId) => {
 
 const assignGuest = (data) => prisma.roomAssignment.create({ data });
 
+const findAssignmentByGuestId = (guestId) => prisma.roomAssignment.findFirst({
+  where: { guestId },
+  include: {
+    room: {
+      include: {
+        hotel: {
+          select: {
+            id: true,
+            eventId: true
+          }
+        }
+      }
+    }
+  }
+});
+
+const unassignGuest = (assignmentId) => prisma.roomAssignment.delete({ where: { id: assignmentId } });
+
 module.exports = {
   createHotel,
   findHotelById,
@@ -73,5 +91,7 @@ module.exports = {
   createRoom,
   findRoomById,
   assignedMembers,
-  assignGuest
+  assignGuest,
+  findAssignmentByGuestId,
+  unassignGuest
 };

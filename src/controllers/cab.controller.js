@@ -28,8 +28,28 @@ const assignGuest = async (req, res, next) => {
   }
 };
 
+const unassignGuest = async (req, res, next) => {
+  try {
+    const assignment = await cabService.unassignGuest(req.body, req.user);
+    response.success(res, assignment, 'Guest unassigned from cab');
+  } catch (error) {
+    next(error);
+  }
+};
+
+const moveGuest = async (req, res, next) => {
+  try {
+    const assignment = await cabService.moveGuest(req.body, req.user);
+    response.success(res, assignment, 'Guest moved to another cab');
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createCab,
   listCabs,
-  assignGuest
+  assignGuest,
+  unassignGuest,
+  moveGuest
 };

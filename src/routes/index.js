@@ -9,6 +9,7 @@ const hotelRoutes = require('../modules/hotel/hotel.routes');
 const qrRoutes = require('../modules/qr/qr.routes');
 const dashboardRoutes = require('../modules/dashboard/dashboard.routes');
 const voiceRoutes = require('../modules/voice/voice.routes');
+const publicRsvpRoutes = require('../modules/public-rsvp/public-rsvp.routes');
 
 const router = express.Router();
 
@@ -29,5 +30,6 @@ router.use('/hotels', hotelRoutes);
 router.use('/checkin', qrRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/voice', voiceRoutes);
+router.use('/public-rsvp', publicRsvpRoutes);
 
 module.exports = router;
