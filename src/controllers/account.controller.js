@@ -29,6 +29,15 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
+const completeOnboarding = async (req, res, next) => {
+  try {
+    const data = await accountService.completeOnboarding(req.user.id, req.body);
+    response.success(res, data, 'Onboarding completed');
+  } catch (error) {
+    next(error);
+  }
+};
+
 const listMembers = async (req, res, next) => {
   try {
     const members = await teamService.listMembers(req.user.id);
@@ -78,6 +87,7 @@ module.exports = {
   getMe,
   updateMe,
   updateProfile,
+  completeOnboarding,
   listMembers,
   inviteMember,
   revokeMember,

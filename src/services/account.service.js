@@ -4,7 +4,7 @@ const accountRepository = require('../repositories/account.repository');
 const accountMemberRepository = require('../repositories/account-member.repository');
 const AppError = require('../utils/AppError');
 
-const defaultAccountName = (email) => `${email.split('@')[0]} Events`;
+const defaultAccountName = () => 'My Workspace';
 
 const createAccountForOwner = async (user, { name } = {}) => {
   const existingMember = await accountMemberRepository.findActiveByUserId(user.id);
@@ -26,7 +26,7 @@ const createAccountForOwner = async (user, { name } = {}) => {
   return prisma.$transaction(async (tx) => {
     const account = await tx.account.create({
       data: {
-        name: name || defaultAccountName(user.email),
+        name: name || defaultAccountName(),
         ownerId: user.id
       }
     });
@@ -65,9 +65,57 @@ const getAccountMe = async (userId) => {
       email: member.email,
       name: member.name,
       phone: member.phone,
-      status: member.status
-    }
+      status: member.status,
+      onboardingCompletedAt: member.onboardingCompletedAt
+    },
+    needsOnboarding: !member.onboardingCompletedAt
   };
+};
+
+const completeOnboarding = async (userId, payload) => {
+  const member = await accountMemberRepository.findActiveByUserId(userId);
+  if (!member) {
+    throw new AppError('No active account membership', 403, 'NO_ACCOUNT_MEMBERSHIP');
+  }
+
+  const name = String(payload.name || '').trim();
+  const phone = String(payload.phone || '').trim();
+
+  if (!name || name.length < 2) {
+    throw new AppError('Full name is required', 400, 'VALIDATION_ERROR');
+  }
+
+  if (!phone || phone.length < 8) {
+    throw new AppError('WhatsApp / phone number is required', 400, 'VALIDATION_ERROR');
+  }
+
+  const memberUpdate = {
+    name,
+    phone,
+    onboardingCompletedAt: new Date()
+  };
+
+  if (member.role === 'OWNER') {
+    const workspaceName = String(payload.workspaceName || '').trim();
+    if (!workspaceName || workspaceName.length < 2) {
+      throw new AppError('Organisation name is required', 400, 'VALIDATION_ERROR');
+    }
+
+    await prisma.$transaction([
+      prisma.accountMember.update({
+        where: { id: member.id },
+        data: memberUpdate
+      }),
+      prisma.account.update({
+        where: { id: member.accountId },
+        data: { name: workspaceName }
+      })
+    ]);
+  } else {
+    await accountMemberRepository.update(member.id, memberUpdate);
+  }
+
+  return getAccountMe(userId);
 };
 
 const updateAccountName = async (userId, name) => {
@@ -112,5 +160,6 @@ module.exports = {
   getAccountMe,
   updateAccountName,
   updateMyProfile,
+  completeOnboarding,
   defaultAccountName
 };

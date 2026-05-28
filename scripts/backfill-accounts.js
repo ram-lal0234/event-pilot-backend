@@ -22,7 +22,7 @@ const createAccountForOwner = async (user) => {
     if (member) return member;
   }
 
-  const accountName = `${user.email.split('@')[0]} Events`;
+  const accountName = 'My Workspace';
 
   return prisma.$transaction(async (tx) => {
     const account = await tx.account.create({

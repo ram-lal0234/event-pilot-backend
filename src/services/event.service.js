@@ -1,6 +1,36 @@
+const prisma = require('../config/db');
 const eventRepository = require('../repositories/event.repository');
 const auditService = require('./audit.service');
 const accessService = require('./access.service');
+
+const attachEventStats = async (events) => {
+  if (!events.length) return [];
+
+  const eventIds = events.map((event) => event.id);
+  const guestCounts = await prisma.guest.groupBy({
+    by: ['eventId'],
+    where: { eventId: { in: eventIds }, deletedAt: null },
+    _count: { _all: true }
+  });
+  const confirmedCounts = await prisma.guest.groupBy({
+    by: ['eventId'],
+    where: {
+      eventId: { in: eventIds },
+      deletedAt: null,
+      rsvpStatus: 'CONFIRMED'
+    },
+    _count: { _all: true }
+  });
+
+  const totalByEvent = new Map(guestCounts.map((row) => [row.eventId, row._count._all]));
+  const confirmedByEvent = new Map(confirmedCounts.map((row) => [row.eventId, row._count._all]));
+
+  return events.map((event) => ({
+    ...event,
+    guestCount: totalByEvent.get(event.id) || 0,
+    rsvpConfirmedCount: confirmedByEvent.get(event.id) || 0
+  }));
+};
 
 const createEvent = async (payload, user) => {
   const member = await accessService.assertCanCreateEvent(user.id);
@@ -31,7 +61,8 @@ const createEvent = async (payload, user) => {
 };
 
 const listEvents = async (user) => {
-  return accessService.listAccessibleEvents(user.id);
+  const events = await accessService.listAccessibleEvents(user.id);
+  return attachEventStats(events);
 };
 
 module.exports = {

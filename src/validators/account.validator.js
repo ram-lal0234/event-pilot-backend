@@ -9,6 +9,12 @@ const updateProfileSchema = Joi.object({
   phone: Joi.string().trim().max(30).allow('', null)
 }).min(1);
 
+const completeOnboardingSchema = Joi.object({
+  name: Joi.string().trim().min(2).max(120).required(),
+  phone: Joi.string().trim().min(8).max(30).required(),
+  workspaceName: Joi.string().trim().min(2).max(120).optional()
+});
+
 const inviteMemberSchema = Joi.object({
   email: Joi.string().email().required(),
   name: Joi.string().trim().max(120).allow('', null),
@@ -51,6 +57,7 @@ const joinVerifyOtpSchema = Joi.object({
 module.exports = {
   updateAccountSchema,
   updateProfileSchema,
+  completeOnboardingSchema,
   inviteMemberSchema,
   updateMemberRoleSchema,
   updateMemberEventsSchema,
