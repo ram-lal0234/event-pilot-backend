@@ -37,6 +37,15 @@ const updateGuestRsvp = async (req, res, next) => {
   }
 };
 
+const getGuestRsvpLink = async (req, res, next) => {
+  try {
+    const link = await guestService.getGuestRsvpLink(req.params.id, req.user);
+    response.success(res, link, 'Guest RSVP link ready');
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getGuestCallLogs = async (req, res, next) => {
   try {
     const logs = await guestService.getGuestCallLogs(req.params.id, req.user);
@@ -72,6 +81,7 @@ module.exports = {
   listGuests,
   updateGuest,
   updateGuestRsvp,
+  getGuestRsvpLink,
   getGuestCallLogs,
   deleteGuest,
   uploadCsv

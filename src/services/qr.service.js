@@ -10,7 +10,7 @@ const scan = async ({ qrCode, method, locationType }, user) => {
     throw new AppError('Invalid QR code', 404, 'INVALID_QR');
   }
 
-  const existing = await checkinRepository.findByGuestId(guest.id);
+  const existing = await checkinRepository.findByGuestAndLocation(guest.id, locationType);
   const alreadyCheckedIn = Boolean(existing);
   const checkin = existing || await checkinRepository.create({
     eventId: guest.eventId,
@@ -34,25 +34,51 @@ const scan = async ({ qrCode, method, locationType }, user) => {
     });
   }
 
+  const allCheckins = await checkinRepository.findByGuestId(guest.id);
+
   return {
     guest,
     checkin,
-    alreadyCheckedIn
+    checkins: allCheckins,
+    alreadyCheckedIn,
+    locationType
   };
 };
 
-const undo = async ({ qrCode }, user) => {
+const undo = async ({ qrCode, locationType }, user) => {
   const guest = await guestRepository.findByQrCode(qrCode);
   if (!guest) {
     throw new AppError('Invalid QR code', 404, 'INVALID_QR');
   }
 
+  if (locationType) {
+    const existing = await checkinRepository.findByGuestAndLocation(guest.id, locationType);
+    if (!existing) {
+      throw new AppError(`Guest is not checked in at ${locationType}`, 409, 'CHECKIN_NOT_FOUND');
+    }
+
+    await checkinRepository.deleteByGuestAndLocation(guest.id, locationType);
+    await auditService.enqueueAuditLog({
+      eventId: guest.eventId,
+      userId: user && user.id,
+      action: 'GUEST_CHECKIN_UNDONE',
+      entityType: 'Guest',
+      entityId: guest.id,
+      metadata: {
+        checkinId: existing.id,
+        locationType
+      }
+    });
+
+    return { guestId: guest.id, locationType };
+  }
+
   const existing = await checkinRepository.findByGuestId(guest.id);
-  if (!existing) {
+  if (!existing.length) {
     throw new AppError('Guest is not checked in', 409, 'CHECKIN_NOT_FOUND');
   }
 
-  await checkinRepository.deleteByGuestId(guest.id);
+  await checkinRepository.deleteAllByGuestId(guest.id);
   await auditService.enqueueAuditLog({
     eventId: guest.eventId,
     userId: user && user.id,
@@ -60,7 +86,7 @@ const undo = async ({ qrCode }, user) => {
     entityType: 'Guest',
     entityId: guest.id,
     metadata: {
-      checkinId: existing.id
+      removedCount: existing.length
     }
   });
 
