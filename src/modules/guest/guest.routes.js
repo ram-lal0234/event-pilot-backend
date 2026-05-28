@@ -32,6 +32,12 @@ router.patch(
   guestController.updateGuestRsvp
 );
 
+router.get(
+  '/:id/call-logs',
+  validate({ params: guestIdParamSchema }),
+  guestController.getGuestCallLogs
+);
+
 router
   .route('/:id')
   .patch(validate({ params: guestIdParamSchema, body: updateGuestSchema }), guestController.updateGuest)

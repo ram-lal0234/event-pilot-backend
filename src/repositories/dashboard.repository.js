@@ -1,5 +1,9 @@
 const prisma = require('../config/db');
+const env = require('../config/env');
 const auditRepository = require('./audit.repository');
+
+const useDynamoAuditFeed = () =>
+  env.queueProvider !== 'local' && Boolean(env.auditLogTableName);
 
 const summary = async (eventId) => {
   const [totalGuests, confirmed, checkedIn, pendingPickups] = await Promise.all([
@@ -24,6 +28,10 @@ const summary = async (eventId) => {
 };
 
 const liveFeed = (eventId) => {
+  if (!useDynamoAuditFeed()) {
+    return Promise.resolve([]);
+  }
+
   return auditRepository.findByEvent(eventId, 25);
 };
 
