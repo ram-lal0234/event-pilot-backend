@@ -3,38 +3,44 @@ const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
 const {
   logPlivoWebhookAuthDebug,
-  getPlivoAuthHeaderDebug
+  getPlivoAuthHeaderDebug,
+  assertVoiceWebhookSecret
 } = require('../services/plivo-webhook-auth.service');
 
 const voiceWebhookAuth = (req, res, next) => {
+  const route = req.path.includes('rsvp') ? 'ai/rsvp' : 'ai/hangup';
+
   logPlivoWebhookAuthDebug({
     route: `express${req.path}`,
     authMode: 'voice-secret',
     headers: req.headers,
+    query: req.query,
     publicUrl: `${req.protocol}://${req.get('host')}${req.originalUrl}`,
     bodyParams: req.body
   });
 
-  if (!env.voiceAiWebhookSecret) {
+  const auth = assertVoiceWebhookSecret({
+    headers: req.headers,
+    query: req.query,
+    route,
+    body: req.body
+  });
+
+  if (auth.ok) {
     return next();
   }
 
-  const provided = req.get('x-eventpilot-voice-secret');
+  logger.warn('Voice webhook unauthorized', {
+    path: req.path,
+    plivoHeaders: getPlivoAuthHeaderDebug(req.headers, req.query),
+    reason: auth.reason
+  });
 
-  if (provided !== env.voiceAiWebhookSecret) {
-    logger.warn('Voice webhook unauthorized: configure Plivo to send X-EventPilot-Voice-Secret or unset VOICE_AI_WEBHOOK_SECRET on Lambda', {
-      path: req.path,
-      plivoHeaders: getPlivoAuthHeaderDebug(req.headers),
-      hasSecretHeader: Boolean(provided)
-    });
-    return next(new AppError(
-      'Invalid or missing X-EventPilot-Voice-Secret header. Add it in Plivo flow HTTP actions or unset VOICE_AI_WEBHOOK_SECRET.',
-      401,
-      'VOICE_WEBHOOK_UNAUTHORIZED'
-    ));
-  }
-
-  return next();
+  return next(new AppError(
+    'Invalid or missing X-EventPilot-Voice-Secret header. Add it in Plivo flow HTTP actions or unset VOICE_AI_WEBHOOK_SECRET.',
+    401,
+    'VOICE_WEBHOOK_UNAUTHORIZED'
+  ));
 };
 
 module.exports = voiceWebhookAuth;

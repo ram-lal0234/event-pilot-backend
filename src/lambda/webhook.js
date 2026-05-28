@@ -1,5 +1,5 @@
 const fromShared = require('./shared');
-const { getPublicUrl, normalizeHeaders, parseBody, response } = require('./http-utils');
+const { getPublicUrl, normalizeHeaders, parseBody, response, getRawBodyLength } = require('./http-utils');
 
 const plivoWebhookAuth = fromShared('services/plivo-webhook-auth.service');
 const plivoWebhookIngress = fromShared('services/plivo-webhook-ingress.service');
@@ -56,12 +56,16 @@ module.exports.handler = async (event) => {
     const publicUrl = getPublicUrl(event);
     const authMode = isAiRoute(route) ? 'voice-secret' : 'plivo-signature';
 
+    const rawBodyLength = getRawBodyLength(event);
+
     const authDebug = plivoWebhookAuth.logPlivoWebhookAuthDebug({
       route,
       authMode,
       headers,
+      query: queryParams,
       publicUrl,
-      bodyParams
+      bodyParams,
+      rawBodyLength
     });
 
     if (isAiRoute(route)) {
@@ -73,14 +77,21 @@ module.exports.handler = async (event) => {
         });
       }
 
-      const auth = plivoWebhookAuth.assertVoiceWebhookSecret(headers);
+      const auth = plivoWebhookAuth.assertVoiceWebhookSecret({
+        headers,
+        query: queryParams,
+        route,
+        body: bodyParams
+      });
 
       if (!auth.ok) {
         logger.warn('Rejected Plivo AI webhook', {
           route,
           reason: auth.reason,
+          authDebug: auth.debug,
+          rawBodyLength,
           plivoHeaders: authDebug.headerDebug,
-          note: 'AI routes use X-EventPilot-Voice-Secret, not Plivo signature V3'
+          note: 'Flow RSVP needs X-EventPilot-Voice-Secret matching VOICE_AI_WEBHOOK_SECRET on Lambda; compare providedLength vs expectedLength in logs'
         });
         return response(401, {
           success: false,

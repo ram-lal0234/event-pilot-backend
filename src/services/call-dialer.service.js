@@ -40,10 +40,19 @@ const processCallJob = async (job) => {
       agentContext: job.agentContext
     });
 
-    const callUuid = result.call_uuid || result.callUuid || result.request_uuid;
+    const callUuid = result.call_uuid
+      || result.callUuid
+      || result.data?.call_uuid
+      || result.data?.object?.call_uuid
+      || result.request_uuid;
 
     if (callUuid) {
       await callRepository.update(call.id, { callUuid });
+    } else if ((job.callMode || 'ivr') === 'ai') {
+      logger.warn('Agent Flow response did not include call_uuid; hangup/transcript may not link to Call row', {
+        callId: call.id,
+        responseKeys: Object.keys(result || {})
+      });
     }
 
     const isAi = (job.callMode || 'ivr') === 'ai';

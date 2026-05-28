@@ -35,23 +35,34 @@ const parseStoredOutcome = (responseInput) => {
   }
 };
 
-const normalizePayload = (body = {}) => ({
-  guestId: body.guestId || body.guest_id,
-  rsvpStatus: body.rsvpStatus || body.rsvp_status,
-  groupSize: body.groupSize ?? body.group_size,
-  pickupLocation: body.pickupLocation ?? body.pickup_location,
-  needsCab: body.needsCab ?? body.needs_cab,
-  needsHotel: body.needsHotel ?? body.needs_hotel,
-  guestNotes: body.guestNotes ?? body.guest_notes,
-  language: body.language,
-  callOutcome: body.callOutcome || body.call_outcome,
-  callStatus: body.callStatus || body.call_status || body.CallStatus,
-  attempt: body.attempt,
-  callDuration: body.callDuration ?? body.call_duration,
-  eventType: body.eventType || body.event_type || body.Event,
-  callUuid: body.callUuid || body.call_uuid || body.CallUUID || body.CallUuid,
-  lifecycleStatus: body.status || body.Status
-});
+const getPlatformObject = (body = {}) => body?.data?.object || body?.data?.Object || {};
+
+const normalizePayload = (body = {}) => {
+  const object = getPlatformObject(body);
+
+  return {
+    guestId: body.guestId || body.guest_id || object.guest_id || object.guestId,
+    rsvpStatus: body.rsvpStatus || body.rsvp_status,
+    groupSize: body.groupSize ?? body.group_size,
+    pickupLocation: body.pickupLocation ?? body.pickup_location,
+    needsCab: body.needsCab ?? body.needs_cab,
+    needsHotel: body.needsHotel ?? body.needs_hotel,
+    guestNotes: body.guestNotes ?? body.guest_notes,
+    language: body.language,
+    callOutcome: body.callOutcome || body.call_outcome,
+    callStatus: body.callStatus || body.call_status || body.CallStatus,
+    attempt: body.attempt,
+    callDuration: body.callDuration ?? body.call_duration,
+    eventType: body.eventType || body.event_type || body.Event || object.event_name,
+    callUuid: body.callUuid
+      || body.call_uuid
+      || body.CallUUID
+      || body.CallUuid
+      || object.call_uuid
+      || object.callUuid,
+    lifecycleStatus: body.status || body.Status
+  };
+};
 
 const isLifecycleEvent = (body = {}) => {
   const payload = normalizePayload(body);
@@ -75,6 +86,11 @@ const isRsvpResultEvent = (body = {}) => {
     || payload.guestNotes
   );
 };
+
+const isEmptyPayload = (body) => (
+  !body
+  || (typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 0)
+);
 
 const resolveCallOutcome = (payload) => {
   if (payload.callOutcome) {
@@ -143,6 +159,20 @@ const shouldApplyGuestUpdate = ({ guest, callOutcome, rsvpStatus, recentLog }) =
 
 const handleLifecycleEvent = async (rawBody) => {
   const payload = normalizePayload(rawBody);
+
+  if (!payload.callUuid) {
+    logger.warn('AI lifecycle webhook missing call UUID', {
+      bodyKeys: Object.keys(rawBody || {}),
+      platformObjectKeys: Object.keys(getPlatformObject(rawBody))
+    });
+
+    return {
+      kind: 'lifecycle',
+      processed: false,
+      reason: 'CALL_UUID_MISSING'
+    };
+  }
+
   const plivoResult = await ivrService.processPlivoEvent({
     ...rawBody,
     callUuid: payload.callUuid,
@@ -208,6 +238,11 @@ const handleLifecycleEvent = async (rawBody) => {
 };
 
 const applyRsvpResult = async (rawBody) => {
+  if (isEmptyPayload(rawBody)) {
+    logger.info('Ignoring empty Plivo AI RSVP setup ping');
+    return { kind: 'setup', processed: false };
+  }
+
   const payload = normalizePayload(rawBody);
 
   if (!payload.guestId) {

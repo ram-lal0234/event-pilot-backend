@@ -60,14 +60,18 @@ const lifecycleFieldsSchema = Joi.object({
   .or('eventType', 'event_type', 'Event', 'status', 'Status', 'callStatus', 'call_status', 'CallStatus')
   .or('callUuid', 'call_uuid', 'CallUUID', 'CallUuid');
 
+const setupPingSchema = Joi.object({}).length(0);
+
 // Permissive: Plivo lifecycle payloads vary; unknown keys are stripped but must not fail validation.
 const aiResultSchema = Joi.alternatives().try(
+  setupPingSchema,
   rsvpFieldsSchema.unknown(true),
   lifecycleFieldsSchema.unknown(true)
 );
 
 module.exports = {
   aiResultSchema,
+  setupPingSchema,
   rsvpFieldsSchema,
   lifecycleFieldsSchema
 };

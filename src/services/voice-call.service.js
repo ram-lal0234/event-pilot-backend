@@ -85,9 +85,8 @@ const buildAgentContext = async (guest) => {
   const hotels = await hotelRepository.findManyByEvent(guest.eventId);
   const transportEnabled = parseBool(env.voiceTransportEnabled, true);
   const hotelEnabled = parseBool(env.voiceHotelEnabled, hotels.length > 0);
-  const hostLabel = event.creator?.email
-    ? event.creator.email.split('@')[0]
-    : 'the event host';
+  // Spoken on calls — use event title, never email local-part (e.g. choudharyramlal0234).
+  const hostLabel = (event.name || '').trim() || 'the hosts';
 
   return {
     guest_id: guest.id,

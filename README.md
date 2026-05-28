@@ -61,7 +61,13 @@ Base: `{PUBLIC_API_URL}` (e.g. `https://78dpbxqf57.execute-api.ap-south-1.amazon
 | **Recording / transcript callback** | `POST /webhook/plivo/ai/transcript` | Nested `data.object` with `event_data.recording_url`, `transcription` |
 | **Error callback** (optional) | `POST /webhook/plivo/ai/error` | Platform/agent error payload |
 
-All four require header when `VOICE_AI_WEBHOOK_SECRET` is set:
+**Auth when `VOICE_AI_WEBHOOK_SECRET` is set:**
+
+| Source | Header required? |
+|--------|------------------|
+| **Flow HTTP actions** (`/ai/rsvp`) | Yes — `X-EventPilot-Voice-Secret: <secret>` |
+| **Plivo platform callbacks** (`/ai/hangup`, `/ai/transcript`, `/ai/error`) | No — Plivo sends `created_at` + `data` + `id` JSON; custom headers are not supported on those callbacks |
+| **Query fallback** (any AI route) | Optional — `?voice_secret=<secret>` |
 
 ```http
 X-EventPilot-Voice-Secret: <your secret>
@@ -87,9 +93,10 @@ Legacy: `POST /api/voice/ai/result` auto-routes to hangup or rsvp; prefer dedica
 | Item | Action |
 |------|--------|
 | **max_call_duration** | Set to **240** (or 300), not **4** seconds |
-| **RSVP reporting action URL** | `https://<api-host>/api/voice/ai/result` (not `example.com` placeholder) |
-| **No-answer reporting URL** | Same as above |
-| **Flow hangup callback** | Same endpoint is fine |
+| **RSVP reporting action URL** | `https://<api-host>/webhook/plivo/ai/rsvp` (not `example.com` placeholder) |
+| **RSVP action body** | Use the flow input scope for guest ID: `"guest_id": "{{Start.http.params.guest_id}}"` |
+| **No-answer reporting URL** | `https://<api-host>/webhook/plivo/ai/rsvp` |
+| **Flow hangup callback** | `https://<api-host>/webhook/plivo/ai/hangup` |
 | **Webhook secret** | If `VOICE_AI_WEBHOOK_SECRET` is set, add header `X-EventPilot-Voice-Secret` on every result POST from the flow |
 | **Flow input variables** | Match outbound JSON keys: `guest_id`, `guest_name`, `phone_number`, `from_number`, `event_name`, `event_date_spoken`, `event_location_spoken`, `host_label`, `existing_pickup_location`, `transport_enabled`, `hotel_enabled` |
 

@@ -5,19 +5,33 @@ const auditService = require('./audit.service');
 const { canTransition, isStaleTransition, normalizePlivoStatus } = require('./call-state.service');
 const AppError = require('../utils/AppError');
 
-const getCallUuid = (payload = {}) => payload.CallUUID || payload.callUuid || payload.call_uuid || payload.CallUuid;
+const getPlatformObject = (payload = {}) => payload?.data?.object || payload?.data?.Object || {};
 
-const getEventType = (payload = {}) => (
-  payload.eventType
-  || payload.event_type
-  || payload.Event
-  || payload.event
-  || payload.CallStatus
-  || payload.callStatus
-  || payload.Status
-  || payload.status
-  || 'unknown'
-);
+const getCallUuid = (payload = {}) => {
+  const object = getPlatformObject(payload);
+
+  return payload.CallUUID
+    || payload.callUuid
+    || payload.call_uuid
+    || payload.CallUuid
+    || object.call_uuid
+    || object.callUuid;
+};
+
+const getEventType = (payload = {}) => {
+  const object = getPlatformObject(payload);
+
+  return payload.eventType
+    || payload.event_type
+    || payload.Event
+    || payload.event
+    || payload.CallStatus
+    || payload.callStatus
+    || payload.Status
+    || payload.status
+    || object.event_name
+    || 'unknown';
+};
 
 const createIdempotencyKey = (payload = {}) => {
   const callUuid = getCallUuid(payload) || 'unknown-call';
