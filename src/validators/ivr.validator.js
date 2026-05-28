@@ -1,7 +1,8 @@
 const Joi = require('joi');
 
 const triggerIvrSchema = Joi.object({
-  guestId: Joi.string().guid({ version: ['uuidv4', 'uuidv5'] }).required()
+  guestId: Joi.string().guid({ version: ['uuidv4', 'uuidv5'] }).required(),
+  callMode: Joi.string().valid('ai', 'ivr')
 });
 
 const ivrWebhookSchema = Joi.object({

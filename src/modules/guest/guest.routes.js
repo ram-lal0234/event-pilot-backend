@@ -5,6 +5,7 @@ const validate = require('../../middlewares/validate.middleware');
 const {
   createGuestSchema,
   updateGuestSchema,
+  updateGuestRsvpSchema,
   guestIdParamSchema,
   guestQuerySchema
 } = require('../../validators/guest.validator');
@@ -24,6 +25,18 @@ router
   .route('/')
   .post(validate({ body: createGuestSchema }), guestController.createGuest)
   .get(validate({ query: guestQuerySchema }), guestController.listGuests);
+
+router.patch(
+  '/:id/rsvp',
+  validate({ params: guestIdParamSchema, body: updateGuestRsvpSchema }),
+  guestController.updateGuestRsvp
+);
+
+router.get(
+  '/:id/call-logs',
+  validate({ params: guestIdParamSchema }),
+  guestController.getGuestCallLogs
+);
 
 router
   .route('/:id')

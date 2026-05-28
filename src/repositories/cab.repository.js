@@ -82,10 +82,39 @@ const assignGuestWithSeatReservation = ({ eventId, cabId, guestId, seats }) => {
   });
 };
 
+const findAssignmentByGuestId = (guestId) => prisma.cabAssignment.findFirst({
+  where: { guestId },
+  include: {
+    cab: {
+      select: {
+        id: true,
+        eventId: true
+      }
+    }
+  }
+});
+
+const unassignGuestWithSeatRelease = ({ assignmentId, cabId, seats }) => prisma.$transaction(async (tx) => {
+  await tx.cabAssignment.delete({
+    where: { id: assignmentId }
+  });
+
+  await tx.cab.update({
+    where: { id: cabId },
+    data: {
+      usedSeats: {
+        decrement: seats
+      }
+    }
+  });
+});
+
 module.exports = {
   create,
   findById,
   findManyByEvent,
   assignGuest,
-  assignGuestWithSeatReservation
+  assignGuestWithSeatReservation,
+  findAssignmentByGuestId,
+  unassignGuestWithSeatRelease
 };

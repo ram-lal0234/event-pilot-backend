@@ -1,14 +1,25 @@
 const { PrismaClient } = require('@prisma/client');
 const logger = require('../utils/logger');
 
-const prisma = new PrismaClient({
-  log: [
-    { emit: 'event', level: 'error' },
-    { emit: 'event', level: 'warn' }
-  ]
-});
+const createPrismaClient = () => {
+  const client = new PrismaClient({
+    log: [
+      { emit: 'event', level: 'error' },
+      { emit: 'event', level: 'warn' }
+    ]
+  });
 
-prisma.$on('error', (event) => logger.error(event));
-prisma.$on('warn', (event) => logger.warn(event));
+  client.$on('error', (event) => logger.error(event));
+  client.$on('warn', (event) => logger.warn(event));
+
+  return client;
+};
+
+const globalForPrisma = globalThis;
+const prisma = globalForPrisma.prisma || createPrismaClient();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
+}
 
 module.exports = prisma;

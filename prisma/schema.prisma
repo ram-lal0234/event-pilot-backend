@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
 }
 
 datasource db {
@@ -25,9 +26,28 @@ enum RsvpStatus {
   DECLINED
 }
 
+enum FollowUpStatus {
+  NONE
+  NEEDS_FOLLOW_UP
+  CALLBACK_LATER
+  NO_ANSWER
+  VOICEMAIL
+  COMPLETED
+}
+
 enum CheckinMethod {
   QR
   MANUAL
+}
+
+enum CallStatus {
+  QUEUED
+  DIALING
+  RINGING
+  ANSWERED
+  AI_ACTIVE
+  COMPLETED
+  FAILED
 }
 
 model User {
@@ -39,7 +59,6 @@ model User {
   deletedAt DateTime? @map("deleted_at")
 
   events    Event[]
-  auditLogs AuditLog[]
 
   @@map("users")
 }
@@ -72,6 +91,7 @@ model Event {
   cabs    Cab[]
   hotels  Hotel[]
   setting EventSetting?
+  calls   Call[]
 
   @@index([createdBy])
   @@map("events")
@@ -104,15 +124,21 @@ model Guest {
   groupSize      Int           @default(1) @map("group_size")
   qrCode         String        @unique @map("qr_code")
   ivrRespondedAt DateTime?     @map("ivr_responded_at")
+  followUpStatus FollowUpStatus @default(NONE) @map("follow_up_status")
+  callbackAt     DateTime?     @map("callback_at")
+  lastContactedAt DateTime?    @map("last_contacted_at")
+  assignedTo     String?       @map("assigned_to")
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
   deletedAt      DateTime?     @map("deleted_at")
 
   event           Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
   ivrLogs         IvrLog[]
+  calls           Call[]
   cabAssignments  CabAssignment[]
   roomAssignments RoomAssignment[]
   checkins        Checkin[]
+  invites         GuestInvite[]
 
   @@unique([eventId, phone])
   @@index([eventId])
@@ -140,13 +166,56 @@ model IvrLog {
   @@map("ivr_logs")
 }
 
+model Call {
+  id          String     @id @default(uuid()) @db.Uuid
+  eventId     String     @map("event_id") @db.Uuid
+  guestId     String     @map("guest_id") @db.Uuid
+  phone       String
+  status      CallStatus @default(QUEUED)
+  callUuid    String?    @unique @map("call_uuid")
+  provider    String     @default("plivo")
+  lastEventAt DateTime?  @map("last_event_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  event  Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  guest  Guest       @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  events CallEvent[]
+
+  @@index([eventId])
+  @@index([guestId])
+  @@index([status])
+  @@map("calls")
+}
+
+model CallEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  callId         String?  @map("call_id") @db.Uuid
+  callUuid       String   @map("call_uuid")
+  provider       String   @default("plivo")
+  type           String
+  idempotencyKey String   @unique @map("idempotency_key")
+  payload        Json
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  call Call? @relation(fields: [callId], references: [id], onDelete: SetNull)
+
+  @@index([callUuid])
+  @@index([type])
+  @@map("call_events")
+}
+
 model Cab {
   id            String    @id @default(uuid()) @db.Uuid
   eventId       String    @map("event_id") @db.Uuid
   driverName    String    @map("driver_name")
+  driverPhone   String?   @map("driver_phone")
   vehicleNumber String    @map("vehicle_number")
   capacity      Int
   usedSeats     Int       @default(0) @map("used_seats")
+  pickupTime    DateTime? @map("pickup_time")
+  routeZone     String?   @map("route_zone")
+  tripStatus    String?   @map("trip_status")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
@@ -195,6 +264,11 @@ model Room {
   hotelId    String    @map("hotel_id") @db.Uuid
   roomNumber String    @map("room_number")
   capacity   Int
+  roomType   String?   @map("room_type")
+  floor      String?
+  roomStatus String?   @map("room_status")
+  checkInDate DateTime? @map("check_in_date")
+  checkOutDate DateTime? @map("check_out_date")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
   deletedAt  DateTime? @map("deleted_at")
@@ -204,6 +278,23 @@ model Room {
 
   @@unique([hotelId, roomNumber])
   @@map("rooms")
+}
+
+model GuestInvite {
+  id         String    @id @default(uuid()) @db.Uuid
+  guestId    String    @map("guest_id") @db.Uuid
+  code       String    @unique
+  expiresAt  DateTime? @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  guest Guest @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@index([guestId])
+  @@index([code, revokedAt, expiresAt])
+  @@map("guest_invites")
 }
 
 model RoomAssignment {
@@ -237,23 +328,4 @@ model Checkin {
   @@unique([guestId])
   @@index([eventId])
   @@map("checkins")
-}
-
-model AuditLog {
-  id         String   @id @default(uuid()) @db.Uuid
-  eventId    String?  @map("event_id") @db.Uuid
-  userId     String?  @map("user_id") @db.Uuid
-  action     String
-  entityType String   @map("entity_type")
-  entityId   String   @map("entity_id")
-  metadata   Json?
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  @@index([eventId])
-  @@index([userId])
-  @@index([entityType, entityId])
-  @@map("audit_logs")
 }

@@ -11,7 +11,12 @@ const createHotelSchema = Joi.object({
 const createRoomSchema = Joi.object({
   hotelId: uuid.required(),
   roomNumber: Joi.string().trim().min(1).max(40).required(),
-  capacity: Joi.number().integer().min(1).max(20).required()
+  capacity: Joi.number().integer().min(1).max(20).required(),
+  roomType: Joi.string().trim().max(40).allow(null, ''),
+  floor: Joi.string().trim().max(20).allow(null, ''),
+  roomStatus: Joi.string().trim().max(40).allow(null, ''),
+  checkInDate: Joi.date().iso().allow(null),
+  checkOutDate: Joi.date().iso().allow(null)
 });
 
 const assignRoomSchema = Joi.object({
@@ -19,8 +24,19 @@ const assignRoomSchema = Joi.object({
   guestId: uuid.required()
 });
 
+const unassignRoomSchema = Joi.object({
+  guestId: uuid.required()
+});
+
+const moveRoomSchema = Joi.object({
+  guestId: uuid.required(),
+  toRoomId: uuid.required()
+});
+
 module.exports = {
   createHotelSchema,
   createRoomSchema,
-  assignRoomSchema
+  assignRoomSchema,
+  unassignRoomSchema,
+  moveRoomSchema
 };

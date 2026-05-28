@@ -1,0 +1,284 @@
+service: event-pilot-backend
+frameworkVersion: '3'
+
+package:
+  individually: true
+  patterns:
+    - '!node_modules/**'
+    - '!layers/**'
+    - '!.env'
+    - '!.env.*'
+    - '!.github/**'
+    - '!.serverless/**'
+    - '!coverage/**'
+    - '!dist/**'
+    - '!prisma/migrations/**'
+    - '!deploy.sh'
+
+layers:
+  dependencies:
+    path: layers/dependencies
+    name: ${self:service}-${sls:stage}-dependencies
+    description: Production node_modules shared by EventPilot Lambda functions
+    compatibleArchitectures:
+      - arm64
+  sharedCode:
+    path: layers/shared-code
+    name: ${self:service}-${sls:stage}-shared-code
+    description: Shared DB, queue, audit, Plivo, and utility source used by worker Lambdas
+    compatibleArchitectures:
+      - arm64
+
+provider:
+  name: aws
+  runtime: nodejs24.x
+  architecture: arm64
+  region: ${opt:region, 'ap-south-1'}
+  stage: ${opt:stage, 'dev'}
+  httpApi:
+    cors:
+      allowedOrigins:
+        - ${env:FRONTEND_ORIGIN, '*'}
+      allowedHeaders:
+        - content-type
+        - authorization
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+  environment:
+    NODE_ENV: production
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+    QUEUE_PROVIDER: sqs
+    CALL_QUEUE_URL: !Ref CallQueue
+    EVENT_QUEUE_URL: !Ref EventQueue
+    AUDIT_QUEUE_URL: !Ref AuditQueue
+    AUDIT_LOG_TABLE_NAME: !Ref AuditLogTable
+    DATABASE_URL: ${env:DATABASE_URL}
+    DIRECT_URL: ${env:DIRECT_URL}
+    JWT_SECRET: ${env:JWT_SECRET}
+    JWT_EXPIRES_IN: ${env:JWT_EXPIRES_IN, '7d'}
+    EMAIL_PROVIDER: ${env:EMAIL_PROVIDER, 'resend'}
+    RESEND_API_KEY: ${env:RESEND_API_KEY, ''}
+    EMAIL_FROM: ${env:EMAIL_FROM, ''}
+    PUBLIC_API_URL: ${env:PUBLIC_API_URL, ''}
+    PLIVO_AUTH_ID: ${env:PLIVO_AUTH_ID, ''}
+    PLIVO_AUTH_TOKEN: ${env:PLIVO_AUTH_TOKEN, ''}
+    PLIVO_FROM_NUMBER: ${env:PLIVO_FROM_NUMBER, ''}
+    PLIVO_ANSWER_URL: ${env:PLIVO_ANSWER_URL, ''}
+    PLIVO_IVR_ANSWER_URL: ${env:PLIVO_IVR_ANSWER_URL, ''}
+    PLIVO_AI_ANSWER_URL: ${env:PLIVO_AI_ANSWER_URL, ''}
+    PLIVO_WEBHOOK_URL: ${env:PLIVO_WEBHOOK_URL, ''}
+    VOICE_DEFAULT_CALL_MODE: ${env:VOICE_DEFAULT_CALL_MODE, 'ai'}
+    VOICE_AI_WEBHOOK_SECRET: ${env:VOICE_AI_WEBHOOK_SECRET, ''}
+    VOICE_TRANSPORT_ENABLED: ${env:VOICE_TRANSPORT_ENABLED, 'true'}
+    VOICE_HOTEL_ENABLED: ${env:VOICE_HOTEL_ENABLED, 'true'}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+          Resource:
+            - !GetAtt CallQueue.Arn
+            - !GetAtt EventQueue.Arn
+            - !GetAtt AuditQueue.Arn
+        - Effect: Allow
+          Action:
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource:
+            - !GetAtt CallQueue.Arn
+            - !GetAtt EventQueue.Arn
+            - !GetAtt AuditQueue.Arn
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:Query
+          Resource:
+            - !GetAtt AuditLogTable.Arn
+            - !Sub '${AuditLogTable.Arn}/index/*'
+
+functions:
+  core:
+    handler: src/lambda/core.handler
+    layers:
+      - !Ref DependenciesLambdaLayer
+    events:
+      - httpApi:
+          method: ANY
+          path: /api/{proxy+}
+
+  webhook:
+    handler: src/lambda/webhook.handler
+    package:
+      patterns:
+        - '!src/**'
+        - 'src/lambda/webhook.js'
+        - 'src/lambda/http-utils.js'
+        - 'src/lambda/shared.js'
+    layers:
+      - !Ref DependenciesLambdaLayer
+      - !Ref SharedCodeLambdaLayer
+    events:
+      - httpApi:
+          method: ANY
+          path: /webhook/plivo/{proxy+}
+      - httpApi:
+          method: POST
+          path: /webhook/plivo
+
+  dialer:
+    handler: src/lambda/dialer.handler
+    package:
+      patterns:
+        - '!src/**'
+        - 'src/lambda/dialer.js'
+        - 'src/lambda/shared.js'
+        - 'src/lambda/sqs-utils.js'
+    layers:
+      - !Ref DependenciesLambdaLayer
+      - !Ref SharedCodeLambdaLayer
+
+  processor:
+    handler: src/lambda/processor.handler
+    package:
+      patterns:
+        - '!src/**'
+        - 'src/lambda/processor.js'
+        - 'src/lambda/shared.js'
+        - 'src/lambda/sqs-utils.js'
+    layers:
+      - !Ref DependenciesLambdaLayer
+      - !Ref SharedCodeLambdaLayer
+
+  auditProcessor:
+    handler: src/lambda/audit-processor.handler
+    package:
+      patterns:
+        - '!src/**'
+        - 'src/lambda/audit-processor.js'
+        - 'src/lambda/shared.js'
+        - 'src/lambda/sqs-utils.js'
+    layers:
+      - !Ref DependenciesLambdaLayer
+      - !Ref SharedCodeLambdaLayer
+
+resources:
+  Resources:
+    CallQueueDlq:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-call-dlq
+        MessageRetentionPeriod: 1209600
+
+    EventQueueDlq:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-event-dlq
+        MessageRetentionPeriod: 1209600
+
+    AuditQueueDlq:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-audit-dlq
+        MessageRetentionPeriod: 1209600
+
+    CallQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-call
+        VisibilityTimeout: 60
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt CallQueueDlq.Arn
+          maxReceiveCount: 5
+
+    EventQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-event
+        VisibilityTimeout: 60
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt EventQueueDlq.Arn
+          maxReceiveCount: 5
+
+    AuditQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-audit
+        VisibilityTimeout: 60
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt AuditQueueDlq.Arn
+          maxReceiveCount: 5
+
+    AuditLogTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-${sls:stage}-audit-logs
+        BillingMode: PROVISIONED
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        AttributeDefinitions:
+          - AttributeName: pk
+            AttributeType: S
+          - AttributeName: sk
+            AttributeType: S
+          - AttributeName: gsi1pk
+            AttributeType: S
+          - AttributeName: gsi1sk
+            AttributeType: S
+        KeySchema:
+          - AttributeName: pk
+            KeyType: HASH
+          - AttributeName: sk
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: entity-index
+            KeySchema:
+              - AttributeName: gsi1pk
+                KeyType: HASH
+              - AttributeName: gsi1sk
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
+
+    DialerQueueMapping:
+      Type: AWS::Lambda::EventSourceMapping
+      Properties:
+        EventSourceArn: !GetAtt CallQueue.Arn
+        FunctionName: !GetAtt DialerLambdaFunction.Arn
+        BatchSize: 5
+        FunctionResponseTypes:
+          - ReportBatchItemFailures
+        ScalingConfig:
+          MaximumConcurrency: ${env:DIALER_MAX_QUEUE_CONCURRENCY, 5}
+
+    ProcessorQueueMapping:
+      Type: AWS::Lambda::EventSourceMapping
+      Properties:
+        EventSourceArn: !GetAtt EventQueue.Arn
+        FunctionName: !GetAtt ProcessorLambdaFunction.Arn
+        BatchSize: 5
+        FunctionResponseTypes:
+          - ReportBatchItemFailures
+        ScalingConfig:
+          MaximumConcurrency: ${env:PROCESSOR_MAX_QUEUE_CONCURRENCY, 5}
+
+    AuditQueueMapping:
+      Type: AWS::Lambda::EventSourceMapping
+      Properties:
+        EventSourceArn: !GetAtt AuditQueue.Arn
+        FunctionName: !GetAtt AuditProcessorLambdaFunction.Arn
+        BatchSize: 10
+        FunctionResponseTypes:
+          - ReportBatchItemFailures
+        ScalingConfig:
+          MaximumConcurrency: ${env:AUDIT_MAX_QUEUE_CONCURRENCY, 2}
