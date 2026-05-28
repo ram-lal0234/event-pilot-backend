@@ -20,6 +20,15 @@ const updateMe = async (req, res, next) => {
   }
 };
 
+const updateProfile = async (req, res, next) => {
+  try {
+    const membership = await accountService.updateMyProfile(req.user.id, req.body);
+    response.success(res, membership, 'Profile updated');
+  } catch (error) {
+    next(error);
+  }
+};
+
 const listMembers = async (req, res, next) => {
   try {
     const members = await teamService.listMembers(req.user.id);
@@ -68,6 +77,7 @@ const updateMemberEvents = async (req, res, next) => {
 module.exports = {
   getMe,
   updateMe,
+  updateProfile,
   listMembers,
   inviteMember,
   revokeMember,

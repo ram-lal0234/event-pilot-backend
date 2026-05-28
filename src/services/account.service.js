@@ -64,6 +64,7 @@ const getAccountMe = async (userId) => {
       role: member.role,
       email: member.email,
       name: member.name,
+      phone: member.phone,
       status: member.status
     }
   };
@@ -79,9 +80,37 @@ const updateAccountName = async (userId, name) => {
   return account;
 };
 
+const updateMyProfile = async (userId, { name, phone }) => {
+  const member = await accountMemberRepository.findActiveByUserId(userId);
+  if (!member) {
+    throw new AppError('No active account membership', 403, 'NO_ACCOUNT_MEMBERSHIP');
+  }
+
+  const data = {};
+  if (name !== undefined) {
+    const trimmed = typeof name === 'string' ? name.trim() : '';
+    data.name = trimmed || null;
+  }
+  if (phone !== undefined) {
+    const trimmed = typeof phone === 'string' ? phone.trim() : '';
+    data.phone = trimmed || null;
+  }
+
+  const updated = await accountMemberRepository.update(member.id, data);
+  return {
+    id: updated.id,
+    role: updated.role,
+    email: updated.email,
+    name: updated.name,
+    phone: updated.phone,
+    status: updated.status
+  };
+};
+
 module.exports = {
   createAccountForOwner,
   getAccountMe,
   updateAccountName,
+  updateMyProfile,
   defaultAccountName
 };

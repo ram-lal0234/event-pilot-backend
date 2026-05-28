@@ -4,6 +4,11 @@ const updateAccountSchema = Joi.object({
   name: Joi.string().trim().min(2).max(120).required()
 });
 
+const updateProfileSchema = Joi.object({
+  name: Joi.string().trim().max(120).allow('', null),
+  phone: Joi.string().trim().max(30).allow('', null)
+}).min(1);
+
 const inviteMemberSchema = Joi.object({
   email: Joi.string().email().required(),
   name: Joi.string().trim().max(120).allow('', null),
@@ -38,11 +43,18 @@ const joinCodeParamSchema = Joi.object({
   code: Joi.string().min(8).max(64).required()
 });
 
+const joinVerifyOtpSchema = Joi.object({
+  email: Joi.string().trim().email().required(),
+  otp: Joi.string().length(6).pattern(/^[0-9]+$/).required()
+});
+
 module.exports = {
   updateAccountSchema,
+  updateProfileSchema,
   inviteMemberSchema,
   updateMemberRoleSchema,
   updateMemberEventsSchema,
   memberIdParamSchema,
-  joinCodeParamSchema
+  joinCodeParamSchema,
+  joinVerifyOtpSchema
 };

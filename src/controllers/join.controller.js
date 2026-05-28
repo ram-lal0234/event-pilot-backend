@@ -19,7 +19,17 @@ const accept = async (req, res, next) => {
   }
 };
 
+const verifyAndAccept = async (req, res, next) => {
+  try {
+    const result = await teamService.verifyOtpAndAcceptJoin(req.params.code, req.body);
+    response.success(res, result, 'Invitation accepted');
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getPreview,
-  accept
+  accept,
+  verifyAndAccept
 };

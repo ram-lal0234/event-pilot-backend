@@ -213,6 +213,11 @@ const getJoinPreview = async (code) => {
   };
 };
 
+const verifyOtpAndAcceptJoin = async (code, { email, otp }) => {
+  const user = await authService.consumeValidOtp({ email, otp });
+  return acceptJoin(code, user);
+};
+
 const acceptJoin = async (code, user) => {
   const member = await accountMemberRepository.findByInviteCode(code);
 
@@ -250,5 +255,6 @@ module.exports = {
   updateMemberRole,
   updateMemberEvents,
   getJoinPreview,
+  verifyOtpAndAcceptJoin,
   acceptJoin
 };

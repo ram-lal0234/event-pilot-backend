@@ -66,7 +66,7 @@ const requestLoginOtp = async ({ email }) => {
   };
 };
 
-const verifyOtp = async ({ email, otp }) => {
+const consumeValidOtp = async ({ email, otp }) => {
   const token = await prisma.otpToken.findFirst({
     where: {
       email,
@@ -85,11 +85,15 @@ const verifyOtp = async ({ email, otp }) => {
     data: { consumed: true }
   });
 
-  const user = await prisma.user.upsert({
+  return prisma.user.upsert({
     where: { email },
     create: { email, role: 'ADMIN' },
     update: {}
   });
+};
+
+const verifyOtp = async ({ email, otp }) => {
+  const user = await consumeValidOtp({ email, otp });
 
   let member = await accountMemberRepository.findActiveByUserId(user.id);
 
@@ -124,6 +128,7 @@ const verifyOtp = async ({ email, otp }) => {
 
 module.exports = {
   requestLoginOtp,
+  consumeValidOtp,
   verifyOtp,
   buildAuthResponse
 };
