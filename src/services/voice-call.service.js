@@ -101,10 +101,26 @@ const buildAgentContext = async (guest, call) => {
     existing_pickup_location: guest.pickupLocation || '',
     transport_enabled: transportEnabled,
     hotel_enabled: hotelEnabled,
-    rsvp_webhook_url: getPlivoAiWebhookUrl('ai/rsvp'),
-    hangup_webhook_url: getPlivoAiWebhookUrl('ai/hangup'),
-    transcript_webhook_url: getPlivoAiWebhookUrl('ai/transcript'),
-    error_webhook_url: getPlivoAiWebhookUrl('ai/error')
+    rsvp_webhook_url: getPlivoAiWebhookUrl('ai/rsvp', {
+      callId: call?.id || '',
+      guestId: guest.id,
+      eventId: guest.eventId
+    }),
+    hangup_webhook_url: getPlivoAiWebhookUrl('ai/hangup', {
+      callId: call?.id || '',
+      guestId: guest.id,
+      eventId: guest.eventId
+    }),
+    transcript_webhook_url: getPlivoAiWebhookUrl('ai/transcript', {
+      callId: call?.id || '',
+      guestId: guest.id,
+      eventId: guest.eventId
+    }),
+    error_webhook_url: getPlivoAiWebhookUrl('ai/error', {
+      callId: call?.id || '',
+      guestId: guest.id,
+      eventId: guest.eventId
+    })
   };
 };
 

@@ -18,6 +18,21 @@ const getBodyLength = (body) => {
   }
 };
 
+const isTemplatePlaceholder = (value) => (
+  typeof value === 'string' && /^{{[^{}]+}}$/.test(value.trim())
+);
+
+const normalizeGuestIdForLog = (body = {}) => {
+  const value = body?.guest_id || body?.guestId || null;
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  if (isTemplatePlaceholder(value)) {
+    return null;
+  }
+  return String(value);
+};
+
 const processPlivoWebhookJob = async (job = {}) => {
   const route = normalizePlivoAiRoute(job.route || 'telephony');
   const body = job.body || job;
@@ -35,11 +50,16 @@ const processPlivoWebhookJob = async (job = {}) => {
       return voiceAiService.handleLifecycleEvent(body);
 
     case 'ai/rsvp':
+      {
+      const rawGuestId = body?.guest_id ?? body?.guestId ?? null;
+      const normalizedGuestId = normalizeGuestIdForLog(body);
       logger.info('Plivo AI RSVP body received', {
         bodyKeys: Object.keys(body || {}),
         bodyLength: getBodyLength(body),
         guestIdPresent: Boolean(body?.guest_id || body?.guestId),
         guestIdIsBlank: body?.guest_id === '' || body?.guestId === '',
+        guestIdIsTemplate: isTemplatePlaceholder(rawGuestId),
+        guestIdNormalizedPresent: Boolean(normalizedGuestId),
         hasRsvpStatus: Boolean(body?.rsvpStatus || body?.rsvp_status),
         hasCallOutcome: Boolean(body?.callOutcome || body?.call_outcome)
       });
@@ -50,6 +70,7 @@ const processPlivoWebhookJob = async (job = {}) => {
       }
 
       return voiceAiService.applyRsvpResult(body);
+      }
 
     case 'ai/transcript':
       return voiceAiTranscriptService.handleTranscriptEvent(body);

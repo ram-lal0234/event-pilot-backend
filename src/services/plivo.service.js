@@ -36,14 +36,15 @@ const getWebhookUrl = (params = {}) => {
   return undefined;
 };
 
-/** e.g. getPlivoAiWebhookUrl('ai/rsvp') → {PUBLIC_API_URL}/webhook/plivo/ai/rsvp */
-const getPlivoAiWebhookUrl = (subpath) => {
+/** e.g. getPlivoAiWebhookUrl('ai/rsvp', { guestId }) → {PUBLIC_API_URL}/webhook/plivo/ai/rsvp?guestId=... */
+const getPlivoAiWebhookUrl = (subpath, params = {}) => {
   if (!env.publicApiUrl) {
     return '';
   }
 
   const normalized = String(subpath || '').replace(/^\/+/, '');
-  return `${env.publicApiUrl.replace(/\/$/, '')}/webhook/plivo/${normalized}`;
+  const base = `${env.publicApiUrl.replace(/\/$/, '')}/webhook/plivo/${normalized}`;
+  return appendQuery(base, params);
 };
 
 const getIvrAnswerUrl = ({ callId, guestId }) => {
