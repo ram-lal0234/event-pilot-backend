@@ -3,6 +3,9 @@ const env = require('../config/env');
 
 let documentClient;
 
+/** In-memory audit feed for local development (QUEUE_PROVIDER=local). */
+const localAuditByEvent = new Map();
+
 const getDocumentClient = () => {
   if (!documentClient) {
     const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
@@ -26,7 +29,49 @@ const getTableName = () => {
   return env.auditLogTableName;
 };
 
+const toAuditRecord = (item) => ({
+  id: item.id,
+  eventId: item.eventId,
+  userId: item.userId,
+  action: item.action,
+  entityType: item.entityType,
+  entityId: item.entityId,
+  metadata: item.metadata || null,
+  createdAt: item.createdAt
+});
+
+const createLocal = ({ eventId, userId, action, entityType, entityId, metadata = {} }) => {
+  const createdAt = new Date().toISOString();
+  const id = randomUUID();
+  const item = {
+    id,
+    eventId: eventId || null,
+    userId: userId || null,
+    action,
+    entityType,
+    entityId,
+    metadata,
+    createdAt
+  };
+
+  if (eventId) {
+    const existing = localAuditByEvent.get(eventId) || [];
+    localAuditByEvent.set(eventId, [item, ...existing].slice(0, 100));
+  }
+
+  return item;
+};
+
+const findByEventLocal = (eventId, limit = 25) => {
+  const items = localAuditByEvent.get(eventId) || [];
+  return items.slice(0, limit).map(toAuditRecord);
+};
+
 const create = async ({ eventId, userId, action, entityType, entityId, metadata = {} }) => {
+  if (env.queueProvider === 'local') {
+    return createLocal({ eventId, userId, action, entityType, entityId, metadata });
+  }
+
   const { PutCommand } = require('@aws-sdk/lib-dynamodb');
   const createdAt = new Date().toISOString();
   const id = randomUUID();
@@ -55,6 +100,10 @@ const create = async ({ eventId, userId, action, entityType, entityId, metadata 
 };
 
 const findByEvent = async (eventId, limit = 25) => {
+  if (env.queueProvider === 'local') {
+    return findByEventLocal(eventId, limit);
+  }
+
   const { QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
   const result = await getDocumentClient().send(new QueryCommand({
@@ -67,19 +116,12 @@ const findByEvent = async (eventId, limit = 25) => {
     Limit: limit
   }));
 
-  return (result.Items || []).map((item) => ({
-    id: item.id,
-    eventId: item.eventId,
-    userId: item.userId,
-    action: item.action,
-    entityType: item.entityType,
-    entityId: item.entityId,
-    metadata: item.metadata || null,
-    createdAt: item.createdAt
-  }));
+  return (result.Items || []).map(toAuditRecord);
 };
 
 module.exports = {
   create,
-  findByEvent
+  createLocal,
+  findByEvent,
+  findByEventLocal
 };

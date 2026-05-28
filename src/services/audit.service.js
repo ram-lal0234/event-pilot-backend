@@ -22,8 +22,9 @@ const writeAuditLog = async (payload) => {
 
 const enqueueAuditLog = async (payload) => {
   if (env.queueProvider === 'local') {
-    logAuditEvent('Audit log recorded locally', payload);
-    return;
+    const item = await writeAuditLog(payload);
+    logAuditEvent('Audit log recorded locally', payload, { auditLogId: item.id });
+    return item;
   }
 
   try {
