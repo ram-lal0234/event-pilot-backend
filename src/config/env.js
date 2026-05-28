@@ -26,6 +26,7 @@ const envSchema = Joi.object({
   PLIVO_AI_ANSWER_URL: Joi.string().uri().allow('', null),
   PLIVO_WEBHOOK_URL: Joi.string().uri().allow('', null),
   PUBLIC_API_URL: Joi.string().uri().allow('', null),
+  PUBLIC_RSVP_BASE_URL: Joi.string().uri().allow('', null),
   VOICE_DEFAULT_CALL_MODE: Joi.string().valid('ai', 'ivr', '').allow('', null),
   VOICE_AI_WEBHOOK_SECRET: Joi.string().allow('', null),
   VOICE_TRANSPORT_ENABLED: Joi.string().valid('true', 'false', '1', '0', '').allow('', null),
@@ -77,6 +78,7 @@ module.exports = {
     webhookUrl: value.PLIVO_WEBHOOK_URL || undefined
   },
   publicApiUrl: value.PUBLIC_API_URL || undefined,
+  publicRsvpBaseUrl: value.PUBLIC_RSVP_BASE_URL || undefined,
   voiceDefaultCallMode: value.VOICE_DEFAULT_CALL_MODE || undefined,
   voiceAiWebhookSecret: value.VOICE_AI_WEBHOOK_SECRET || undefined,
   voiceTransportEnabled: value.VOICE_TRANSPORT_ENABLED || undefined,

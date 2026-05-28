@@ -33,6 +33,12 @@ router.patch(
 );
 
 router.get(
+  '/:id/rsvp-link',
+  validate({ params: guestIdParamSchema }),
+  guestController.getGuestRsvpLink
+);
+
+router.get(
   '/:id/call-logs',
   validate({ params: guestIdParamSchema }),
   guestController.getGuestCallLogs

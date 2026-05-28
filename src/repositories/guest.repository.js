@@ -75,15 +75,46 @@ const toList = (value) => {
   return String(value).split(',').map((item) => item.trim()).filter(Boolean);
 };
 
-const buildGuestWhere = ({ eventId, rsvpStatus, category, q }) => {
+const parseBooleanQuery = (value) => {
+  if (value === true || value === 'true') {
+    return true;
+  }
+
+  if (value === false || value === 'false') {
+    return false;
+  }
+
+  return undefined;
+};
+
+const buildGuestWhere = ({
+  eventId,
+  rsvpStatus,
+  category,
+  followUpStatus,
+  needsCab,
+  needsHotel,
+  assignedTo,
+  q
+}) => {
   const rsvpStatuses = toList(rsvpStatus);
   const categories = toList(category);
+  const followUpStatuses = toList(followUpStatus);
   const search = q ? String(q).trim() : '';
+  const needsCabFilter = parseBooleanQuery(needsCab);
+  const needsHotelFilter = parseBooleanQuery(needsHotel);
+  const assignedToSearch = assignedTo ? String(assignedTo).trim() : '';
 
   return {
     eventId,
     ...(rsvpStatuses?.length ? { rsvpStatus: { in: rsvpStatuses } } : {}),
     ...(categories?.length ? { category: { in: categories } } : {}),
+    ...(followUpStatuses?.length ? { followUpStatus: { in: followUpStatuses } } : {}),
+    ...(needsCabFilter === true ? { needsCab: true } : needsCabFilter === false ? { needsCab: false } : {}),
+    ...(needsHotelFilter === true ? { needsHotel: true } : needsHotelFilter === false ? { needsHotel: false } : {}),
+    ...(assignedToSearch ? {
+      assignedTo: { contains: assignedToSearch, mode: 'insensitive' }
+    } : {}),
     ...(search ? {
       OR: [
         { name: { contains: search, mode: 'insensitive' } },
@@ -94,14 +125,22 @@ const buildGuestWhere = ({ eventId, rsvpStatus, category, q }) => {
   };
 };
 
+const guestListInclude = {
+  checkins: true,
+  cabAssignments: true,
+  roomAssignments: true,
+  invites: {
+    where: { revokedAt: null },
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: { code: true }
+  }
+};
+
 const findMany = (query) => {
   return prisma.guest.findMany({
     where: buildGuestWhere(query),
-    include: {
-      checkins: true,
-      cabAssignments: true,
-      roomAssignments: true
-    },
+    include: guestListInclude,
     orderBy: { createdAt: 'desc' }
   });
 };
@@ -113,11 +152,7 @@ const findManyPaginated = async ({ page, pageSize, ...query }) => {
   const [items, total] = await prisma.$transaction([
     prisma.guest.findMany({
       where,
-      include: {
-        checkins: true,
-        cabAssignments: true,
-        roomAssignments: true
-      },
+      include: guestListInclude,
       orderBy: { createdAt: 'desc' },
       skip,
       take: pageSize
