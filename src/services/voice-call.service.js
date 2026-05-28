@@ -67,7 +67,7 @@ const resolveCallMode = (override) => {
   return 'ivr';
 };
 
-const buildAgentContext = async (guest) => {
+const buildAgentContext = async (guest, call) => {
   const event = await prisma.event.findUnique({
     where: { id: guest.eventId },
     include: {
@@ -89,6 +89,7 @@ const buildAgentContext = async (guest) => {
   const hostLabel = (event.name || '').trim() || 'the hosts';
 
   return {
+    call_id: call?.id || '',
     guest_id: guest.id,
     guest_name: guest.name,
     phone_number: guest.phone,
@@ -115,7 +116,7 @@ const queueOutboundCall = async ({ guest, user, callMode }) => {
     status: 'QUEUED'
   });
 
-  const agentContext = callMode === 'ai' ? await buildAgentContext(guest) : undefined;
+  const agentContext = callMode === 'ai' ? await buildAgentContext(guest, call) : undefined;
   const jobPayload = {
     callId: call.id,
     guestId: guest.id,

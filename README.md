@@ -98,7 +98,7 @@ Legacy: `POST /api/voice/ai/result` auto-routes to hangup or rsvp; prefer dedica
 | **No-answer reporting URL** | `https://<api-host>/webhook/plivo/ai/rsvp` |
 | **Flow hangup callback** | `https://<api-host>/webhook/plivo/ai/hangup` |
 | **Webhook secret** | If `VOICE_AI_WEBHOOK_SECRET` is set, add header `X-EventPilot-Voice-Secret` on every result POST from the flow |
-| **Flow input variables** | Match outbound JSON keys: `guest_id`, `guest_name`, `phone_number`, `from_number`, `event_name`, `event_date_spoken`, `event_location_spoken`, `host_label`, `existing_pickup_location`, `transport_enabled`, `hotel_enabled` |
+| **Flow input variables** | Match outbound JSON keys: `call_id`, `guest_id`, `guest_name`, `phone_number`, `from_number`, `event_name`, `event_date_spoken`, `event_location_spoken`, `host_label`, `existing_pickup_location`, `transport_enabled`, `hotel_enabled` |
 
 Backend already: POSTs Agent Flow invoke URL directly (not Call API `answer_url`); sends JSON booleans; normalizes E.164; validates payload before invoke; accepts camelCase or snake_case on `/api/voice/ai/result`; avoids downgrading a strong RSVP when a weaker hangup arrives later.
 

@@ -38,19 +38,65 @@ const findByIdWithEvent = (id) => {
   });
 };
 
+const findCallLogData = (id) => {
+  return prisma.guest.findUnique({
+    where: { id },
+    include: {
+      calls: {
+        include: {
+          events: {
+            orderBy: { createdAt: 'desc' }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      },
+      ivrLogs: {
+        orderBy: { createdAt: 'desc' }
+      }
+    }
+  });
+};
+
 const findByQrCode = (qrCode) => {
   return prisma.guest.findUnique({
     where: { qrCode }
   });
 };
 
-const findMany = ({ eventId, rsvpStatus, category }) => {
+const toList = (value) => {
+  if (!value) {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    return value.filter(Boolean);
+  }
+
+  return String(value).split(',').map((item) => item.trim()).filter(Boolean);
+};
+
+const buildGuestWhere = ({ eventId, rsvpStatus, category, q }) => {
+  const rsvpStatuses = toList(rsvpStatus);
+  const categories = toList(category);
+  const search = q ? String(q).trim() : '';
+
+  return {
+    eventId,
+    ...(rsvpStatuses?.length ? { rsvpStatus: { in: rsvpStatuses } } : {}),
+    ...(categories?.length ? { category: { in: categories } } : {}),
+    ...(search ? {
+      OR: [
+        { name: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } }
+      ]
+    } : {})
+  };
+};
+
+const findMany = (query) => {
   return prisma.guest.findMany({
-    where: {
-      eventId,
-      rsvpStatus,
-      category
-    },
+    where: buildGuestWhere(query),
     include: {
       checkins: true,
       cabAssignments: true,
@@ -60,12 +106,8 @@ const findMany = ({ eventId, rsvpStatus, category }) => {
   });
 };
 
-const findManyPaginated = async ({ eventId, rsvpStatus, category, page, pageSize }) => {
-  const where = {
-    eventId,
-    rsvpStatus,
-    category
-  };
+const findManyPaginated = async ({ page, pageSize, ...query }) => {
+  const where = buildGuestWhere(query);
   const skip = (page - 1) * pageSize;
 
   const [items, total] = await prisma.$transaction([
@@ -111,6 +153,7 @@ module.exports = {
   create,
   findById,
   findByIdWithEvent,
+  findCallLogData,
   findByQrCode,
   findMany,
   findManyPaginated,

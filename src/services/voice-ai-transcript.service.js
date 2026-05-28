@@ -3,6 +3,27 @@ const ivrRepository = require('../repositories/ivr.repository');
 const auditService = require('./audit.service');
 const logger = require('../utils/logger');
 
+const findNestedValue = (value, keys, depth = 0) => {
+  if (!value || typeof value !== 'object' || depth > 6) {
+    return null;
+  }
+
+  for (const key of keys) {
+    if (value[key]) {
+      return value[key];
+    }
+  }
+
+  for (const child of Object.values(value)) {
+    const found = findNestedValue(child, keys, depth + 1);
+    if (found) {
+      return found;
+    }
+  }
+
+  return null;
+};
+
 const normalizeTranscriptPayload = (body = {}) => {
   const root = body.data?.object ? body : { data: { object: body } };
   const object = root.data?.object || {};
@@ -15,6 +36,7 @@ const normalizeTranscriptPayload = (body = {}) => {
   return {
     plivoEventId: root.id || body.id || null,
     createdAt: root.created_at || root.createdAt || body.created_at || null,
+    callId: object.call_id || object.callId || body.call_id || body.callId || findNestedValue(body, ['call_id', 'callId']),
     callUuid: object.call_uuid || object.callUuid || body.call_uuid || body.callUuid || null,
     conversationId: object.conversation_id || object.conversationId || null,
     conversationUrl: object.conversation_url || object.conversationUrl || null,
@@ -54,7 +76,8 @@ const handleTranscriptEvent = async (rawBody) => {
     };
   }
 
-  const call = await callRepository.findByCallUuid(normalized.callUuid);
+  const call = await callRepository.findByCallUuid(normalized.callUuid)
+    || (normalized.callId ? await callRepository.findById(normalized.callId) : null);
   const idempotencyKey = buildIdempotencyKey(normalized);
 
   try {
@@ -89,7 +112,8 @@ const handleTranscriptEvent = async (rawBody) => {
     flowName: normalized.flowName,
     flowRunUuid: normalized.flowRunUuid,
     flowUuid: normalized.flowUuid,
-    nodeName: normalized.nodeName
+    nodeName: normalized.nodeName,
+    callId: normalized.callId || null
   });
 
   if (call) {
@@ -111,6 +135,7 @@ const handleTranscriptEvent = async (rawBody) => {
       entityId: call.id,
       metadata: {
         callUuid: normalized.callUuid,
+        callId: normalized.callId || null,
         eventName: normalized.eventName,
         hasRecording: Boolean(normalized.recordingUrl),
         hasTranscription: Boolean(normalized.transcription),
@@ -120,6 +145,7 @@ const handleTranscriptEvent = async (rawBody) => {
   } else {
     logger.info('AI transcript stored without linked Call row', {
       callUuid: normalized.callUuid,
+      callId: normalized.callId || null,
       eventName: normalized.eventName
     });
   }
@@ -129,6 +155,7 @@ const handleTranscriptEvent = async (rawBody) => {
     processed: true,
     callFound: Boolean(call),
     callUuid: normalized.callUuid,
+    callId: normalized.callId || null,
     eventName: normalized.eventName,
     hasRecording: Boolean(normalized.recordingUrl),
     hasTranscription: Boolean(normalized.transcription)

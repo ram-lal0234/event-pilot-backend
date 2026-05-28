@@ -48,6 +48,128 @@ const pickChangedFields = (before, after, fields) => {
   }, {});
 };
 
+const toIsoString = (value) => (value ? new Date(value).toISOString() : null);
+
+const parseResponseInput = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return { raw: value };
+  }
+};
+
+const getEventObject = (payload = {}) => payload?.data?.object || payload?.data?.Object || {};
+const getEventData = (payload = {}) => {
+  const object = getEventObject(payload);
+  return object.event_data || object.eventData || {};
+};
+
+const buildIvrLogEntry = (log) => {
+  const parsed = parseResponseInput(log.responseInput);
+  const kind = parsed?.kind || (parsed?.raw ? 'ivr_response' : 'ivr_log');
+  const isTranscript = kind === 'ai/transcript';
+
+  return {
+    id: `ivr-log:${log.id}`,
+    source: 'ivr_log',
+    type: isTranscript ? 'transcript' : kind,
+    at: toIsoString(log.createdAt),
+    status: log.callStatus,
+    callUuid: parsed?.callUuid || null,
+    callId: parsed?.callId || null,
+    eventName: parsed?.eventName || null,
+    outcome: parsed?.callOutcome || null,
+    rsvpStatus: parsed?.rsvpStatus || null,
+    groupSize: parsed?.groupSize ?? null,
+    needsCab: parsed?.needsCab ?? null,
+    needsHotel: parsed?.needsHotel ?? null,
+    pickupLocation: parsed?.pickupLocation || null,
+    guestNotes: parsed?.guestNotes || null,
+    language: parsed?.language || null,
+    transcription: parsed?.transcription || null,
+    recordingUrl: parsed?.recordingUrl || null,
+    attempt: log.attempt,
+    callDuration: log.callDuration,
+    rsvpCaptured: log.rsvpCaptured,
+    groupSizeCaptured: log.groupSizeCaptured
+  };
+};
+
+const buildCallEventEntry = (event) => {
+  const payload = event.payload || {};
+  const object = getEventObject(payload);
+  const eventData = getEventData(payload);
+  const eventName = object.event_name || object.eventName || event.type;
+  const type = String(event.type || '').startsWith('ai:recording')
+    || eventData.transcription
+    || object.transcription
+    ? 'transcript'
+    : String(event.type || '').includes('error')
+      ? 'error'
+      : 'lifecycle';
+
+  return {
+    id: `call-event:${event.id}`,
+    source: 'call_event',
+    type,
+    at: toIsoString(event.createdAt),
+    status: object.status || object.call_status || object.callStatus || null,
+    callUuid: event.callUuid,
+    callId: event.callId || null,
+    eventName,
+    outcome: null,
+    rsvpStatus: null,
+    groupSize: null,
+    needsCab: null,
+    needsHotel: null,
+    pickupLocation: null,
+    guestNotes: null,
+    language: null,
+    transcription: eventData.transcription || object.transcription || null,
+    recordingUrl: eventData.recording_url || eventData.recordingUrl || object.recording_url || null,
+    provider: event.provider
+  };
+};
+
+const buildCallStatusEntry = (call) => ({
+  id: `call:${call.id}`,
+  source: 'call',
+  type: 'call_status',
+  at: toIsoString(call.createdAt),
+  status: call.status,
+  callUuid: call.callUuid,
+  callId: call.id,
+  eventName: 'call_created',
+  outcome: null,
+  rsvpStatus: null,
+  groupSize: null,
+  needsCab: null,
+  needsHotel: null,
+  pickupLocation: null,
+  guestNotes: null,
+  language: null,
+  transcription: null,
+  recordingUrl: null,
+  provider: call.provider,
+  lastEventAt: toIsoString(call.lastEventAt),
+  updatedAt: toIsoString(call.updatedAt)
+});
+
+const buildCallLogTimeline = (guest) => {
+  const callEntries = guest.calls.flatMap((call) => [
+    buildCallStatusEntry(call),
+    ...call.events.map(buildCallEventEntry)
+  ]);
+  const ivrEntries = guest.ivrLogs.map(buildIvrLogEntry);
+
+  return [...callEntries, ...ivrEntries]
+    .sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime());
+};
+
 const isUniqueConstraintError = (error, fields) => {
   const target = error?.meta?.target || [];
 
@@ -200,6 +322,37 @@ const updateGuestRsvp = async (id, payload, user) => {
   return updatedGuest;
 };
 
+const getGuestCallLogs = async (id, user) => {
+  const guest = await guestRepository.findCallLogData(id);
+
+  if (!guest) {
+    throw new AppError('Guest not found', 404, 'GUEST_NOT_FOUND');
+  }
+
+  await assertEventAccess(guest.eventId, user);
+
+  const timeline = buildCallLogTimeline(guest);
+  const latestCall = guest.calls[0] || null;
+
+  return {
+    guest: {
+      id: guest.id,
+      name: guest.name,
+      phone: guest.phone,
+      rsvpStatus: guest.rsvpStatus
+    },
+    summary: {
+      totalCalls: guest.calls.length,
+      totalEvents: guest.calls.reduce((count, call) => count + call.events.length, 0),
+      totalIvrLogs: guest.ivrLogs.length,
+      latestStatus: latestCall?.status || null,
+      lastVoiceResponseAt: toIsoString(guest.ivrRespondedAt),
+      hasTranscript: timeline.some((entry) => Boolean(entry.transcription || entry.recordingUrl))
+    },
+    timeline
+  };
+};
+
 const deleteGuest = async (id, user) => {
   const guest = await guestRepository.findById(id);
 
@@ -277,6 +430,7 @@ module.exports = {
   listGuests,
   updateGuest,
   updateGuestRsvp,
+  getGuestCallLogs,
   deleteGuest,
   triggerIvr,
   uploadCsv

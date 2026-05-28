@@ -117,6 +117,7 @@ const buildAgentFlowPayload = (agentContext = {}) => {
   }
 
   return {
+    call_id: String(agentContext.call_id || ''),
     guest_id: String(agentContext.guest_id || ''),
     guest_name: String(agentContext.guest_name || ''),
     phone_number: formatPhoneForPlivo(agentContext.phone_number, {

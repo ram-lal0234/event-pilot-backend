@@ -35,10 +35,22 @@ const guestIdParamSchema = Joi.object({
   id: uuid.required()
 });
 
+const commaSeparated = (values) => Joi.alternatives().try(
+  Joi.string().valid(...values),
+  Joi.string().custom((value, helpers) => {
+    const items = String(value).split(',').map((item) => item.trim()).filter(Boolean);
+    if (!items.length || items.some((item) => !values.includes(item))) {
+      return helpers.error('any.invalid');
+    }
+    return value;
+  })
+);
+
 const guestQuerySchema = Joi.object({
   eventId: uuid.required(),
-  rsvpStatus: Joi.string().valid('PENDING', 'CONFIRMED', 'DECLINED'),
-  category: Joi.string().valid('VIP', 'FAMILY', 'GENERAL'),
+  q: Joi.string().trim().max(120).allow(''),
+  rsvpStatus: commaSeparated(['PENDING', 'CONFIRMED', 'DECLINED']),
+  category: commaSeparated(['VIP', 'FAMILY', 'GENERAL']),
   page: Joi.number().integer().min(1),
   pageSize: Joi.number().integer().min(1).max(100)
 });

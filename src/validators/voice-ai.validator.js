@@ -11,19 +11,31 @@ const rsvpOutcomeValues = [
   'no_answer'
 ];
 
+const templatePlaceholderSchema = Joi.string().pattern(/^{{[^{}]+}}$/);
+const nullableNumberSchema = Joi.alternatives().try(
+  Joi.number().integer().min(1).max(100),
+  templatePlaceholderSchema,
+  Joi.valid('', null)
+);
+const nullableBooleanSchema = Joi.alternatives().try(
+  Joi.boolean(),
+  templatePlaceholderSchema,
+  Joi.valid('', null)
+);
+
 const rsvpFieldsSchema = Joi.object({
   guestId: Joi.string().guid({ version: ['uuidv4', 'uuidv5'] }),
   guest_id: Joi.string().guid({ version: ['uuidv4', 'uuidv5'] }),
   rsvpStatus: Joi.string().valid('CONFIRMED', 'DECLINED', 'PENDING'),
   rsvp_status: Joi.string().valid('CONFIRMED', 'DECLINED', 'PENDING'),
-  groupSize: Joi.number().integer().min(1).max(100),
-  group_size: Joi.number().integer().min(1).max(100),
+  groupSize: nullableNumberSchema,
+  group_size: nullableNumberSchema,
   pickupLocation: Joi.string().trim().max(500).allow('', null),
   pickup_location: Joi.string().trim().max(500).allow('', null),
-  needsCab: Joi.boolean(),
-  needs_cab: Joi.boolean(),
-  needsHotel: Joi.boolean(),
-  needs_hotel: Joi.boolean(),
+  needsCab: nullableBooleanSchema,
+  needs_cab: nullableBooleanSchema,
+  needsHotel: nullableBooleanSchema,
+  needs_hotel: nullableBooleanSchema,
   guestNotes: Joi.string().trim().max(2000).allow('', null),
   guest_notes: Joi.string().trim().max(2000).allow('', null),
   language: Joi.string().trim().max(20).allow('', null),
