@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const env = require('../config/env');
 const prisma = require('../config/db');
 const AppError = require('../utils/AppError');
+const accountMemberRepository = require('../repositories/account-member.repository');
 
 const authenticate = async (req, res, next) => {
   try {
@@ -23,7 +24,19 @@ const authenticate = async (req, res, next) => {
       throw new AppError('User no longer exists', 401, 'UNAUTHENTICATED');
     }
 
+    const member = await accountMemberRepository.findActiveByUserId(user.id);
+    if (!member) {
+      throw new AppError('No active account membership', 403, 'NO_ACCOUNT_MEMBERSHIP');
+    }
+
     req.user = user;
+    req.membership = {
+      id: member.id,
+      accountId: member.accountId,
+      role: member.role,
+      email: member.email,
+      accountName: member.account.name
+    };
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {

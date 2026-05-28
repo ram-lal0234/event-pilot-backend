@@ -1,15 +1,11 @@
 const hotelRepository = require('../repositories/hotel.repository');
 const guestRepository = require('../repositories/guest.repository');
-const eventRepository = require('../repositories/event.repository');
+const accessService = require('./access.service');
 const auditService = require('./audit.service');
 const AppError = require('../utils/AppError');
 
 const createHotel = async (payload, user) => {
-  const hasAccess = await eventRepository.userCanAccessEvent(payload.eventId, user);
-
-  if (!hasAccess) {
-    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
-  }
+  await accessService.assertEventAccess(user.id, payload.eventId, { level: 'FULL' });
 
   const hotel = await hotelRepository.createHotel(payload);
 
@@ -30,12 +26,7 @@ const createHotel = async (payload, user) => {
 };
 
 const listHotels = async ({ eventId }, user) => {
-  const hasAccess = await eventRepository.userCanAccessEvent(eventId, user);
-
-  if (!hasAccess) {
-    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
-  }
-
+  await accessService.assertEventAccess(user.id, eventId, { level: 'READ' });
   return hotelRepository.findManyByEvent(eventId);
 };
 
@@ -46,11 +37,7 @@ const createRoom = async (payload, user) => {
     throw new AppError('Hotel not found', 404, 'HOTEL_NOT_FOUND');
   }
 
-  const hasAccess = await eventRepository.userCanAccessEvent(hotel.eventId, user);
-
-  if (!hasAccess) {
-    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
-  }
+  await accessService.assertEventAccess(user.id, hotel.eventId, { level: 'FULL' });
 
   const room = await hotelRepository.createRoom({
     hotelId: payload.hotelId,
@@ -93,11 +80,7 @@ const assignGuest = async ({ roomId, guestId }, user) => {
     throw new AppError('Room or guest not found for the same event', 404, 'ROOM_ASSIGNMENT_TARGET_NOT_FOUND');
   }
 
-  const hasAccess = await eventRepository.userCanAccessEvent(room.hotel.eventId, user);
-
-  if (!hasAccess) {
-    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
-  }
+  await accessService.assertEventAccess(user.id, room.hotel.eventId, { level: 'FULL' });
 
   if (guest.rsvpStatus !== 'CONFIRMED') {
     throw new AppError('Only confirmed guests can be assigned to a room', 409, 'ROOM_ASSIGNMENT_REQUIRES_CONFIRMED_RSVP');
@@ -140,10 +123,7 @@ const unassignGuest = async ({ guestId }, user) => {
     throw new AppError('Room assignment not found', 404, 'ROOM_ASSIGNMENT_NOT_FOUND');
   }
 
-  const hasAccess = await eventRepository.userCanAccessEvent(assignment.room.hotel.eventId, user);
-  if (!hasAccess) {
-    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
-  }
+  await accessService.assertEventAccess(user.id, assignment.room.hotel.eventId, { level: 'FULL' });
 
   await hotelRepository.unassignGuest(assignment.id);
   return { id: assignment.id };

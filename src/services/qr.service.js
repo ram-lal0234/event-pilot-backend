@@ -1,5 +1,6 @@
 const guestRepository = require('../repositories/guest.repository');
 const checkinRepository = require('../repositories/checkin.repository');
+const accessService = require('./access.service');
 const auditService = require('./audit.service');
 const AppError = require('../utils/AppError');
 
@@ -9,6 +10,8 @@ const scan = async ({ qrCode, method, locationType }, user) => {
   if (!guest) {
     throw new AppError('Invalid QR code', 404, 'INVALID_QR');
   }
+
+  await accessService.assertEventAccess(user.id, guest.eventId, { level: 'FULL' });
 
   const existing = await checkinRepository.findByGuestAndLocation(guest.id, locationType);
   const alreadyCheckedIn = Boolean(existing);
@@ -50,6 +53,8 @@ const undo = async ({ qrCode, locationType }, user) => {
   if (!guest) {
     throw new AppError('Invalid QR code', 404, 'INVALID_QR');
   }
+
+  await accessService.assertEventAccess(user.id, guest.eventId, { level: 'FULL' });
 
   if (locationType) {
     const existing = await checkinRepository.findByGuestAndLocation(guest.id, locationType);

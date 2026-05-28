@@ -1,12 +1,16 @@
 const eventRepository = require('../repositories/event.repository');
 const auditService = require('./audit.service');
+const accessService = require('./access.service');
 
 const createEvent = async (payload, user) => {
+  const member = await accessService.assertCanCreateEvent(user.id);
+
   const event = await eventRepository.create({
     name: payload.name,
     date: new Date(payload.date),
     location: payload.location,
-    createdBy: user.id
+    createdBy: user.id,
+    accountId: member.accountId
   });
 
   await auditService.enqueueAuditLog({
@@ -18,19 +22,16 @@ const createEvent = async (payload, user) => {
     metadata: {
       name: event.name,
       date: event.date,
-      location: event.location
+      location: event.location,
+      accountId: member.accountId
     }
   });
 
-  return event;
+  return { ...event, accessLevel: 'FULL' };
 };
 
-const listEvents = (user) => {
-  if (user.role === 'ADMIN') {
-    return eventRepository.findByCreator(user.id);
-  }
-
-  return eventRepository.findByCreator(user.id);
+const listEvents = async (user) => {
+  return accessService.listAccessibleEvents(user.id);
 };
 
 module.exports = {

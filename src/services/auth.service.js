@@ -5,8 +5,36 @@ const env = require('../config/env');
 const AppError = require('../utils/AppError');
 const emailService = require('./email.service');
 const auditService = require('./audit.service');
+const accountService = require('./account.service');
+const accountMemberRepository = require('../repositories/account-member.repository');
 
 const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
+
+const buildAuthResponse = (user, member, account) => {
+  const accessToken = jwt.sign(
+    {
+      sub: user.id,
+      email: user.email,
+      accountId: account.id,
+      memberId: member.id,
+      accountRole: member.role
+    },
+    env.jwtSecret,
+    { expiresIn: env.jwtExpiresIn }
+  );
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      accountId: account.id,
+      memberId: member.id,
+      accountRole: member.role,
+      accountName: account.name
+    },
+    accessToken
+  };
+};
 
 const requestLoginOtp = async ({ email }) => {
   const otp = generateOtp();
@@ -63,6 +91,22 @@ const verifyOtp = async ({ email, otp }) => {
     update: {}
   });
 
+  let member = await accountMemberRepository.findActiveByUserId(user.id);
+
+  if (!member) {
+    const pendingInvite = await accountMemberRepository.findPendingByEmail(email);
+    if (pendingInvite) {
+      throw new AppError(
+        'You have a pending team invite. Open your invite link to join the account before signing in.',
+        403,
+        'PENDING_TEAM_INVITE'
+      );
+    }
+
+    const { account, member: ownerMember } = await accountService.createAccountForOwner(user);
+    member = { ...ownerMember, account };
+  }
+
   await auditService.enqueueAuditLog({
     userId: user.id,
     action: 'LOGIN_VERIFIED',
@@ -70,23 +114,16 @@ const verifyOtp = async ({ email, otp }) => {
     entityId: user.id,
     metadata: {
       email: user.email,
-      role: user.role
+      accountId: member.accountId,
+      accountRole: member.role
     }
   });
 
-  const accessToken = jwt.sign(
-    { sub: user.id, email: user.email, role: user.role },
-    env.jwtSecret,
-    { expiresIn: env.jwtExpiresIn }
-  );
-
-  return {
-    user,
-    accessToken
-  };
+  return buildAuthResponse(user, member, member.account);
 };
 
 module.exports = {
   requestLoginOtp,
-  verifyOtp
+  verifyOtp,
+  buildAuthResponse
 };

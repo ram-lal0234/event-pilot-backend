@@ -10,6 +10,8 @@ const qrRoutes = require('../modules/qr/qr.routes');
 const dashboardRoutes = require('../modules/dashboard/dashboard.routes');
 const voiceRoutes = require('../modules/voice/voice.routes');
 const publicRsvpRoutes = require('../modules/public-rsvp/public-rsvp.routes');
+const accountRoutes = require('../modules/account/account.routes');
+const joinRoutes = require('../modules/join/join.routes');
 
 const router = express.Router();
 
@@ -21,6 +23,8 @@ router.get('/health', (req, res) => {
 });
 
 router.use('/auth', authRoutes);
+router.use('/account', accountRoutes);
+router.use('/join', joinRoutes);
 router.use('/events', eventRoutes);
 router.use('/guests', guestRoutes);
 router.use('/call', callRoutes);

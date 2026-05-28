@@ -3,8 +3,8 @@ const { parse } = require('csv-parse/sync');
 const QRCode = require('qrcode');
 const prisma = require('../config/db');
 const guestRepository = require('../repositories/guest.repository');
-const eventRepository = require('../repositories/event.repository');
 const guestInviteRepository = require('../repositories/guest-invite.repository');
+const accessService = require('./access.service');
 const auditService = require('./audit.service');
 const voiceCallService = require('./voice-call.service');
 const AppError = require('../utils/AppError');
@@ -22,12 +22,8 @@ const normalizeGuestPhone = (phone) => {
   }
 };
 
-const assertEventAccess = async (eventId, user) => {
-  const hasAccess = await eventRepository.userCanAccessEvent(eventId, user);
-
-  if (!hasAccess) {
-    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
-  }
+const assertEventAccess = async (eventId, user, level = 'FULL') => {
+  await accessService.assertEventAccess(user.id, eventId, { level });
 };
 
 const toOptionalNumber = (value) => {
@@ -225,7 +221,7 @@ const getGuestRsvpLink = async (id, user) => {
     throw new AppError('Guest not found', 404, 'GUEST_NOT_FOUND');
   }
 
-  await assertEventAccess(guest.eventId, user);
+  await assertEventAccess(guest.eventId, user, 'READ');
 
   const invite = await ensureGuestInvite(guest.id);
 
@@ -319,7 +315,7 @@ const createGuest = async (payload, user) => {
 };
 
 const listGuests = async (query, user) => {
-  await assertEventAccess(query.eventId, user);
+  await assertEventAccess(query.eventId, user, 'READ');
 
   if (query.page || query.pageSize) {
     const result = await guestRepository.findManyPaginated({
@@ -431,7 +427,7 @@ const getGuestCallLogs = async (id, user) => {
     throw new AppError('Guest not found', 404, 'GUEST_NOT_FOUND');
   }
 
-  await assertEventAccess(guest.eventId, user);
+  await assertEventAccess(guest.eventId, user, 'READ');
 
   const timeline = buildCallLogTimeline(guest);
   const latestCall = guest.calls[0] || null;

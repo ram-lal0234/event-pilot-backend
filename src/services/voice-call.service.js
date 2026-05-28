@@ -172,14 +172,7 @@ const queueOutboundCall = async ({ guest, user, callMode }) => {
   };
 };
 
-const assertEventAccess = async (eventId, user) => {
-  const eventRepository = require('../repositories/event.repository');
-  const hasAccess = await eventRepository.userCanAccessEvent(eventId, user);
-
-  if (!hasAccess) {
-    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
-  }
-};
+const accessService = require('./access.service');
 
 const triggerOutboundCall = async (guestId, user, { callMode: callModeOverride } = {}) => {
   const guest = await guestRepository.findById(guestId);
@@ -188,7 +181,7 @@ const triggerOutboundCall = async (guestId, user, { callMode: callModeOverride }
     throw new AppError('Guest not found', 404, 'GUEST_NOT_FOUND');
   }
 
-  await assertEventAccess(guest.eventId, user);
+  await accessService.assertCanTriggerVoice(user.id, guest.eventId);
 
   const event = await prisma.event.findUnique({
     where: { id: guest.eventId },

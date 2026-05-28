@@ -56,6 +56,35 @@ const sendOtpEmail = async ({ email, otp }) => {
   logger.info('OTP email sent', { email, provider: env.emailProvider });
 };
 
+const renderTeamInviteEmail = ({ accountName, inviteUrl, role }) => ({
+  subject: `You're invited to ${accountName} on Event Pilot`,
+  html: `
+    <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.5;">
+      <h1 style="font-size: 20px; margin-bottom: 12px;">Team invitation</h1>
+      <p>You have been invited to join <strong>${accountName}</strong> as <strong>${role}</strong>.</p>
+      <p><a href="${inviteUrl}">Accept your invitation</a></p>
+      <p style="font-size: 12px; color: #6b7280;">Or copy this link: ${inviteUrl}</p>
+    </div>
+  `,
+  text: `Join ${accountName} on Event Pilot as ${role}: ${inviteUrl}`
+});
+
+const sendTeamInviteEmail = async ({ email, accountName, inviteUrl, role }) => {
+  if (env.emailProvider === 'mock') {
+    logger.info('Mock team invite', { email, accountName, inviteUrl, role });
+    return;
+  }
+
+  const message = renderTeamInviteEmail({ accountName, inviteUrl, role });
+  await sendWithResend({
+    to: email,
+    ...message
+  });
+
+  logger.info('Team invite email sent', { email, accountName });
+};
+
 module.exports = {
-  sendOtpEmail
+  sendOtpEmail,
+  sendTeamInviteEmail
 };

@@ -3,7 +3,7 @@ const response = require('../utils/response');
 
 const startCall = async (req, res, next) => {
   try {
-    const result = await callService.startCall(req.body.guestId, req.user);
+    const result = await callService.startCall(req.body.guestId, req.user, req.body.callMode);
     response.success(res, result, 'Call queued');
   } catch (error) {
     next(error);
