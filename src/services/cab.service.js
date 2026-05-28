@@ -14,8 +14,12 @@ const createCab = async (payload, user) => {
   const cab = await cabRepository.create({
     eventId: payload.eventId,
     driverName: payload.driverName,
+    driverPhone: payload.driverPhone || null,
     vehicleNumber: payload.vehicleNumber,
-    capacity: payload.capacity
+    capacity: payload.capacity,
+    pickupTime: payload.pickupTime ? new Date(payload.pickupTime) : null,
+    routeZone: payload.routeZone || null,
+    tripStatus: payload.tripStatus || null
   });
 
   await auditService.enqueueAuditLog({
@@ -26,8 +30,12 @@ const createCab = async (payload, user) => {
     entityId: cab.id,
     metadata: {
       driverName: cab.driverName,
+      driverPhone: cab.driverPhone,
       vehicleNumber: cab.vehicleNumber,
       capacity: cab.capacity,
+      pickupTime: cab.pickupTime,
+      routeZone: cab.routeZone,
+      tripStatus: cab.tripStatus,
       createdBy: user.id
     }
   });
@@ -97,8 +105,41 @@ const assignGuest = async ({ cabId, guestId }, user) => {
   return assignment;
 };
 
+const unassignGuest = async ({ guestId }, user) => {
+  const assignment = await cabRepository.findAssignmentByGuestId(guestId);
+  if (!assignment) {
+    throw new AppError('Cab assignment not found', 404, 'CAB_ASSIGNMENT_NOT_FOUND');
+  }
+
+  const hasAccess = await eventRepository.userCanAccessEvent(assignment.cab.eventId, user);
+  if (!hasAccess) {
+    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
+  }
+
+  const guest = await guestRepository.findById(guestId);
+  await cabRepository.unassignGuestWithSeatRelease({
+    assignmentId: assignment.id,
+    cabId: assignment.cabId,
+    seats: guest?.groupSize || 1
+  });
+
+  return { id: assignment.id };
+};
+
+const moveGuest = async ({ guestId, toCabId }, user) => {
+  const existing = await cabRepository.findAssignmentByGuestId(guestId);
+  if (!existing) {
+    throw new AppError('Cab assignment not found', 404, 'CAB_ASSIGNMENT_NOT_FOUND');
+  }
+
+  await unassignGuest({ guestId }, user);
+  return assignGuest({ cabId: toCabId, guestId }, user);
+};
+
 module.exports = {
   createCab,
   listCabs,
-  assignGuest
+  assignGuest,
+  unassignGuest,
+  moveGuest
 };

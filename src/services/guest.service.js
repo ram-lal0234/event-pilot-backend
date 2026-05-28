@@ -1,8 +1,9 @@
-const { randomUUID } = require('crypto');
+const { randomUUID, randomBytes } = require('crypto');
 const { parse } = require('csv-parse/sync');
 const QRCode = require('qrcode');
 const guestRepository = require('../repositories/guest.repository');
 const eventRepository = require('../repositories/event.repository');
+const guestInviteRepository = require('../repositories/guest-invite.repository');
 const auditService = require('./audit.service');
 const voiceCallService = require('./voice-call.service');
 const AppError = require('../utils/AppError');
@@ -227,6 +228,11 @@ const createGuest = async (payload, user) => {
     }
   });
 
+  await guestInviteRepository.create({
+    guestId: guest.id,
+    code: randomBytes(16).toString('hex')
+  });
+
   return {
     ...guest,
     qrImage
@@ -271,7 +277,11 @@ const updateGuest = async (id, payload, user) => {
     'pickupLat',
     'pickupLng',
     'category',
-    'groupSize'
+    'groupSize',
+    'followUpStatus',
+    'callbackAt',
+    'lastContactedAt',
+    'assignedTo'
   ]);
 
   await auditService.enqueueAuditLog({
@@ -301,7 +311,9 @@ const updateGuestRsvp = async (id, payload, user) => {
   const updatedGuest = await guestRepository.update(id, {
     rsvpStatus: payload.rsvpStatus,
     groupSize: payload.groupSize,
-    ivrRespondedAt: new Date()
+    ivrRespondedAt: new Date(),
+    lastContactedAt: new Date(),
+    followUpStatus: payload.rsvpStatus === 'PENDING' ? 'NEEDS_FOLLOW_UP' : 'COMPLETED'
   });
 
   await auditService.enqueueAuditLog({

@@ -6,6 +6,11 @@ const scanQrSchema = Joi.object({
   locationType: Joi.string().valid('EVENT_GATE', 'HOTEL').default('EVENT_GATE')
 });
 
+const undoCheckinSchema = Joi.object({
+  qrCode: Joi.string().trim().required()
+});
+
 module.exports = {
-  scanQrSchema
+  scanQrSchema,
+  undoCheckinSchema
 };
