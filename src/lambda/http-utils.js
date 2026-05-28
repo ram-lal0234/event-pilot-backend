@@ -11,10 +11,22 @@ const parseBody = (event) => {
   }
 
   if (contentType.includes('application/json')) {
-    return JSON.parse(rawBody);
+    try {
+      return JSON.parse(rawBody);
+    } catch {
+      return { _parseError: 'invalid_json', _rawBodyPreview: rawBody.slice(0, 200) };
+    }
   }
 
   return Object.fromEntries(new URLSearchParams(rawBody));
+};
+
+const getRawBodyLength = (event) => {
+  const rawBody = event.isBase64Encoded
+    ? Buffer.from(event.body || '', 'base64').toString('utf8')
+    : event.body || '';
+
+  return rawBody.length;
 };
 
 const normalizeHeaders = (headers = {}) => Object.entries(headers).reduce((acc, [key, value]) => {
@@ -42,5 +54,6 @@ module.exports = {
   parseBody,
   normalizeHeaders,
   response,
-  getPublicUrl
+  getPublicUrl,
+  getRawBodyLength
 };

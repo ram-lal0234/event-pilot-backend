@@ -6,7 +6,14 @@ const create = (data) => {
 
 const findByCreator = (createdBy) => {
   return prisma.event.findMany({
-    where: { createdBy },
+    where: { createdBy, deletedAt: null },
+    orderBy: { date: 'asc' }
+  });
+};
+
+const findByAccountId = (accountId) => {
+  return prisma.event.findMany({
+    where: { accountId, deletedAt: null },
     orderBy: { date: 'asc' }
   });
 };
@@ -17,24 +24,9 @@ const findById = (id) => {
   });
 };
 
-const userCanAccessEvent = async (eventId, user) => {
-  if (user.role === 'ADMIN') {
-    return Boolean(await findById(eventId));
-  }
-
-  const event = await prisma.event.findFirst({
-    where: {
-      id: eventId,
-      createdBy: user.id
-    }
-  });
-
-  return Boolean(event);
-};
-
 module.exports = {
   create,
   findByCreator,
-  findById,
-  userCanAccessEvent
+  findByAccountId,
+  findById
 };

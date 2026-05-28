@@ -69,7 +69,13 @@ provider:
     PLIVO_AUTH_TOKEN: ${env:PLIVO_AUTH_TOKEN, ''}
     PLIVO_FROM_NUMBER: ${env:PLIVO_FROM_NUMBER, ''}
     PLIVO_ANSWER_URL: ${env:PLIVO_ANSWER_URL, ''}
+    PLIVO_IVR_ANSWER_URL: ${env:PLIVO_IVR_ANSWER_URL, ''}
+    PLIVO_AI_ANSWER_URL: ${env:PLIVO_AI_ANSWER_URL, ''}
     PLIVO_WEBHOOK_URL: ${env:PLIVO_WEBHOOK_URL, ''}
+    VOICE_DEFAULT_CALL_MODE: ${env:VOICE_DEFAULT_CALL_MODE, 'ai'}
+    VOICE_AI_WEBHOOK_SECRET: ${env:VOICE_AI_WEBHOOK_SECRET, ''}
+    VOICE_TRANSPORT_ENABLED: ${env:VOICE_TRANSPORT_ENABLED, 'true'}
+    VOICE_HOTEL_ENABLED: ${env:VOICE_HOTEL_ENABLED, 'true'}
   iam:
     role:
       statements:
@@ -119,6 +125,9 @@ functions:
       - !Ref DependenciesLambdaLayer
       - !Ref SharedCodeLambdaLayer
     events:
+      - httpApi:
+          method: ANY
+          path: /webhook/plivo/{proxy+}
       - httpApi:
           method: POST
           path: /webhook/plivo

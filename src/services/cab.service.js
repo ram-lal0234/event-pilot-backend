@@ -1,21 +1,21 @@
 const cabRepository = require('../repositories/cab.repository');
 const guestRepository = require('../repositories/guest.repository');
-const eventRepository = require('../repositories/event.repository');
+const accessService = require('./access.service');
 const auditService = require('./audit.service');
 const AppError = require('../utils/AppError');
 
 const createCab = async (payload, user) => {
-  const hasAccess = await eventRepository.userCanAccessEvent(payload.eventId, user);
-
-  if (!hasAccess) {
-    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
-  }
+  await accessService.assertEventAccess(user.id, payload.eventId, { level: 'FULL' });
 
   const cab = await cabRepository.create({
     eventId: payload.eventId,
     driverName: payload.driverName,
+    driverPhone: payload.driverPhone || null,
     vehicleNumber: payload.vehicleNumber,
-    capacity: payload.capacity
+    capacity: payload.capacity,
+    pickupTime: payload.pickupTime ? new Date(payload.pickupTime) : null,
+    routeZone: payload.routeZone || null,
+    tripStatus: payload.tripStatus || null
   });
 
   await auditService.enqueueAuditLog({
@@ -26,8 +26,12 @@ const createCab = async (payload, user) => {
     entityId: cab.id,
     metadata: {
       driverName: cab.driverName,
+      driverPhone: cab.driverPhone,
       vehicleNumber: cab.vehicleNumber,
       capacity: cab.capacity,
+      pickupTime: cab.pickupTime,
+      routeZone: cab.routeZone,
+      tripStatus: cab.tripStatus,
       createdBy: user.id
     }
   });
@@ -36,12 +40,7 @@ const createCab = async (payload, user) => {
 };
 
 const listCabs = async ({ eventId }, user) => {
-  const hasAccess = await eventRepository.userCanAccessEvent(eventId, user);
-
-  if (!hasAccess) {
-    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
-  }
-
+  await accessService.assertEventAccess(user.id, eventId, { level: 'READ' });
   return cabRepository.findManyByEvent(eventId);
 };
 
@@ -55,11 +54,7 @@ const assignGuest = async ({ cabId, guestId }, user) => {
     throw new AppError('Cab or guest not found for the same event', 404, 'CAB_ASSIGNMENT_TARGET_NOT_FOUND');
   }
 
-  const hasAccess = await eventRepository.userCanAccessEvent(cab.eventId, user);
-
-  if (!hasAccess) {
-    throw new AppError('Event not found or inaccessible', 404, 'EVENT_NOT_FOUND');
-  }
+  await accessService.assertEventAccess(user.id, cab.eventId, { level: 'FULL' });
 
   if (guest.rsvpStatus !== 'CONFIRMED') {
     throw new AppError('Only confirmed guests can be assigned to a cab', 409, 'CAB_ASSIGNMENT_REQUIRES_CONFIRMED_RSVP');
@@ -97,8 +92,47 @@ const assignGuest = async ({ cabId, guestId }, user) => {
   return assignment;
 };
 
+const unassignGuest = async ({ guestId }, user) => {
+  const assignment = await cabRepository.findAssignmentByGuestId(guestId);
+  if (!assignment) {
+    throw new AppError('Cab assignment not found', 404, 'CAB_ASSIGNMENT_NOT_FOUND');
+  }
+
+  await accessService.assertEventAccess(user.id, assignment.cab.eventId, { level: 'FULL' });
+
+  const guest = await guestRepository.findById(guestId);
+  await cabRepository.unassignGuestWithSeatRelease({
+    assignmentId: assignment.id,
+    cabId: assignment.cabId,
+    seats: guest?.groupSize || assignment.guest?.groupSize || 1
+  });
+
+  await auditService.enqueueAuditLog({
+    eventId: assignment.cab.eventId,
+    userId: user.id,
+    action: 'GUEST_UNASSIGNED_FROM_CAB',
+    entityType: 'CabAssignment',
+    entityId: assignment.id,
+    metadata: { guestId, unassignedBy: user.id }
+  });
+
+  return { id: assignment.id };
+};
+
+const moveGuest = async ({ guestId, toCabId }, user) => {
+  const existing = await cabRepository.findAssignmentByGuestId(guestId);
+  if (!existing) {
+    throw new AppError('Cab assignment not found', 404, 'CAB_ASSIGNMENT_NOT_FOUND');
+  }
+
+  await unassignGuest({ guestId }, user);
+  return assignGuest({ cabId: toCabId, guestId }, user);
+};
+
 module.exports = {
   createCab,
   listCabs,
-  assignGuest
+  assignGuest,
+  unassignGuest,
+  moveGuest
 };

@@ -37,9 +37,29 @@ const assignGuest = async (req, res, next) => {
   }
 };
 
+const unassignGuest = async (req, res, next) => {
+  try {
+    const assignment = await hotelService.unassignGuest(req.body, req.user);
+    response.success(res, assignment, 'Guest unassigned from room');
+  } catch (error) {
+    next(error);
+  }
+};
+
+const moveGuest = async (req, res, next) => {
+  try {
+    const assignment = await hotelService.moveGuest(req.body, req.user);
+    response.success(res, assignment, 'Guest moved to another room');
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createHotel,
   listHotels,
   createRoom,
-  assignGuest
+  assignGuest,
+  unassignGuest,
+  moveGuest
 };

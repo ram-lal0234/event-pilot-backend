@@ -1,17 +1,9 @@
 const callRepository = require('../repositories/call.repository');
-const eventRepository = require('../repositories/event.repository');
+const accessService = require('./access.service');
 const guestService = require('./guest.service');
 const AppError = require('../utils/AppError');
 
-const assertCallAccess = async (call, user) => {
-  const hasAccess = await eventRepository.userCanAccessEvent(call.eventId, user);
-
-  if (!hasAccess) {
-    throw new AppError('Call not found or inaccessible', 404, 'CALL_NOT_FOUND');
-  }
-};
-
-const startCall = (guestId, user) => guestService.triggerIvr(guestId, user);
+const startCall = (guestId, user, callMode) => guestService.triggerIvr(guestId, user, callMode);
 
 const getCallStatus = async (callId, user) => {
   const call = await callRepository.findById(callId);
@@ -20,7 +12,7 @@ const getCallStatus = async (callId, user) => {
     throw new AppError('Call not found', 404, 'CALL_NOT_FOUND');
   }
 
-  await assertCallAccess(call, user);
+  await accessService.assertEventAccess(user.id, call.eventId, { level: 'READ' });
 
   return {
     id: call.id,

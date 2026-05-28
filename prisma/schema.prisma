@@ -26,6 +26,15 @@ enum RsvpStatus {
   DECLINED
 }
 
+enum FollowUpStatus {
+  NONE
+  NEEDS_FOLLOW_UP
+  CALLBACK_LATER
+  NO_ANSWER
+  VOICEMAIL
+  COMPLETED
+}
+
 enum CheckinMethod {
   QR
   MANUAL
@@ -41,6 +50,23 @@ enum CallStatus {
   FAILED
 }
 
+enum AccountRole {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+enum AccessLevel {
+  FULL
+  READ_ONLY
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
 model User {
   id        String    @id @default(uuid()) @db.Uuid
   email     String    @unique
@@ -49,9 +75,67 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  events    Event[]
+  events            Event[]
+  ownedAccount      Account?       @relation("AccountOwner")
+  accountMembership AccountMember?
 
   @@map("users")
+}
+
+model Account {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  ownerId   String   @unique @map("owner_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  owner   User            @relation("AccountOwner", fields: [ownerId], references: [id])
+  members AccountMember[]
+  events  Event[]
+
+  @@map("accounts")
+}
+
+model AccountMember {
+  id          String       @id @default(uuid()) @db.Uuid
+  accountId   String       @map("account_id") @db.Uuid
+  userId      String?      @unique @map("user_id") @db.Uuid
+  email       String
+  name        String?
+  phone       String?
+  role        AccountRole
+  status      InviteStatus @default(PENDING)
+  inviteCode  String       @unique @map("invite_code")
+  invitedById String?      @map("invited_by_id") @db.Uuid
+  invitedAt   DateTime     @default(now()) @map("invited_at")
+  acceptedAt             DateTime? @map("accepted_at")
+  revokedAt              DateTime? @map("revoked_at")
+  onboardingCompletedAt  DateTime? @map("onboarding_completed_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  account     Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user        User?         @relation(fields: [userId], references: [id])
+  eventAccess EventAccess[]
+
+  @@unique([accountId, email])
+  @@index([accountId])
+  @@map("account_members")
+}
+
+model EventAccess {
+  id          String      @id @default(uuid()) @db.Uuid
+  memberId    String      @map("member_id") @db.Uuid
+  eventId     String      @map("event_id") @db.Uuid
+  accessLevel AccessLevel @default(FULL) @map("access_level")
+  assignedAt  DateTime    @default(now()) @map("assigned_at")
+
+  member AccountMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  event  Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, eventId])
+  @@index([eventId])
+  @@map("event_access")
 }
 
 model OtpToken {
@@ -69,6 +153,7 @@ model OtpToken {
 
 model Event {
   id        String    @id @default(uuid()) @db.Uuid
+  accountId String    @map("account_id") @db.Uuid
   name      String
   date      DateTime
   location  String
@@ -77,14 +162,17 @@ model Event {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  creator User          @relation(fields: [createdBy], references: [id])
-  guests  Guest[]
-  cabs    Cab[]
-  hotels  Hotel[]
-  setting EventSetting?
-  calls   Call[]
+  account     Account       @relation(fields: [accountId], references: [id])
+  creator     User          @relation(fields: [createdBy], references: [id])
+  guests      Guest[]
+  cabs        Cab[]
+  hotels      Hotel[]
+  setting     EventSetting?
+  calls       Call[]
+  accessGrants EventAccess[]
 
   @@index([createdBy])
+  @@index([accountId])
   @@map("events")
 }
 
@@ -115,6 +203,14 @@ model Guest {
   groupSize      Int           @default(1) @map("group_size")
   qrCode         String        @unique @map("qr_code")
   ivrRespondedAt DateTime?     @map("ivr_responded_at")
+  followUpStatus FollowUpStatus @default(NONE) @map("follow_up_status")
+  callbackAt     DateTime?     @map("callback_at")
+  lastContactedAt DateTime?    @map("last_contacted_at")
+  assignedTo     String?       @map("assigned_to")
+  needsCab       Boolean?      @map("needs_cab")
+  needsHotel     Boolean?      @map("needs_hotel")
+  guestNotes     String?       @map("guest_notes")
+  language       String?
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
   deletedAt      DateTime?     @map("deleted_at")
@@ -125,10 +221,14 @@ model Guest {
   cabAssignments  CabAssignment[]
   roomAssignments RoomAssignment[]
   checkins        Checkin[]
+  invites         GuestInvite[]
 
   @@unique([eventId, phone])
   @@index([eventId])
   @@index([eventId, rsvpStatus])
+  @@index([eventId, followUpStatus])
+  @@index([eventId, needsCab])
+  @@index([eventId, needsHotel])
   @@map("guests")
 }
 
@@ -195,9 +295,13 @@ model Cab {
   id            String    @id @default(uuid()) @db.Uuid
   eventId       String    @map("event_id") @db.Uuid
   driverName    String    @map("driver_name")
+  driverPhone   String?   @map("driver_phone")
   vehicleNumber String    @map("vehicle_number")
   capacity      Int
   usedSeats     Int       @default(0) @map("used_seats")
+  pickupTime    DateTime? @map("pickup_time")
+  routeZone     String?   @map("route_zone")
+  tripStatus    String?   @map("trip_status")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
@@ -246,6 +350,11 @@ model Room {
   hotelId    String    @map("hotel_id") @db.Uuid
   roomNumber String    @map("room_number")
   capacity   Int
+  roomType   String?   @map("room_type")
+  floor      String?
+  roomStatus String?   @map("room_status")
+  checkInDate DateTime? @map("check_in_date")
+  checkOutDate DateTime? @map("check_out_date")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
   deletedAt  DateTime? @map("deleted_at")
@@ -255,6 +364,23 @@ model Room {
 
   @@unique([hotelId, roomNumber])
   @@map("rooms")
+}
+
+model GuestInvite {
+  id         String    @id @default(uuid()) @db.Uuid
+  guestId    String    @map("guest_id") @db.Uuid
+  code       String    @unique
+  expiresAt  DateTime? @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  guest Guest @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@index([guestId])
+  @@index([code, revokedAt, expiresAt])
+  @@map("guest_invites")
 }
 
 model RoomAssignment {
@@ -285,7 +411,7 @@ model Checkin {
 
   guest Guest @relation(fields: [guestId], references: [id], onDelete: Cascade)
 
-  @@unique([guestId])
+  @@unique([guestId, locationType])
   @@index([eventId])
   @@map("checkins")
 }
