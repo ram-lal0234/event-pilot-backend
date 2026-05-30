@@ -4,6 +4,7 @@ const QRCode = require('qrcode');
 const prisma = require('../config/db');
 const guestRepository = require('../repositories/guest.repository');
 const guestInviteRepository = require('../repositories/guest-invite.repository');
+const callbackScheduleService = require('./callback-schedule.service');
 const accessService = require('./access.service');
 const auditService = require('./audit.service');
 const voiceCallService = require('./voice-call.service');
@@ -350,6 +351,22 @@ const updateGuest = async (id, payload, user) => {
   }
 
   const updatedGuest = await guestRepository.update(id, updatePayload);
+
+  const callbackAtTouched = Object.prototype.hasOwnProperty.call(updatePayload, 'callbackAt');
+  const followUpTouched = Object.prototype.hasOwnProperty.call(updatePayload, 'followUpStatus');
+
+  if (callbackAtTouched || followUpTouched) {
+    if (updatedGuest.followUpStatus === 'CALLBACK_LATER' && updatedGuest.callbackAt) {
+      await callbackScheduleService.rescheduleCallback(id, updatedGuest.callbackAt, { mode: 'ai' });
+      if (callbackAtTouched || followUpTouched) {
+        await guestRepository.update(id, { callbackTriggered: false });
+        updatedGuest.callbackTriggered = false;
+      }
+    } else {
+      await callbackScheduleService.cancelCallbackSchedule(id);
+    }
+  }
+
   const changes = pickChangedFields(guest, updatedGuest, [
     'name',
     'phone',
@@ -361,6 +378,7 @@ const updateGuest = async (id, payload, user) => {
     'groupSize',
     'followUpStatus',
     'callbackAt',
+    'callbackTriggered',
     'lastContactedAt',
     'assignedTo',
     'needsCab',

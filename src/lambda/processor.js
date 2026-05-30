@@ -2,6 +2,7 @@ const fromShared = require('./shared');
 const { processBatch } = require('./sqs-utils');
 
 const plivoWebhookConsumer = fromShared('services/plivo-webhook-consumer.service');
+const scheduledCallbackService = fromShared('services/scheduled-callback.service');
 const logger = fromShared('utils/logger');
 
 const handleEventJob = async (job) => {
@@ -13,4 +14,19 @@ const handleEventJob = async (job) => {
   });
 };
 
-module.exports.handler = (event) => processBatch(event, handleEventJob);
+const handleScheduledCallback = async (job) => {
+  const result = await scheduledCallbackService.processScheduledCallback(job);
+  logger.info('Processed scheduled callback job', {
+    guestId: job.guestId,
+    result
+  });
+  return result;
+};
+
+module.exports.handler = async (event) => {
+  if (event?.type === 'scheduled_callback') {
+    return handleScheduledCallback(event);
+  }
+
+  return processBatch(event, handleEventJob);
+};

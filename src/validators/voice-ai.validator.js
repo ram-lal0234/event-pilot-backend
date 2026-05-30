@@ -38,6 +38,8 @@ const rsvpFieldsSchema = Joi.object({
   needs_hotel: nullableBooleanSchema,
   guestNotes: Joi.string().trim().max(2000).allow('', null),
   guest_notes: Joi.string().trim().max(2000).allow('', null),
+  callbackAt: Joi.alternatives().try(Joi.date().iso(), Joi.string().trim().max(80)),
+  callback_at: Joi.alternatives().try(Joi.date().iso(), Joi.string().trim().max(80)),
   language: Joi.string().trim().max(20).allow('', null),
   callOutcome: Joi.string().valid(...rsvpOutcomeValues),
   call_outcome: Joi.string().valid(...rsvpOutcomeValues),

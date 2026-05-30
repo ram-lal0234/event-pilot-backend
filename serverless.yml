@@ -76,6 +76,8 @@ provider:
     VOICE_AI_WEBHOOK_SECRET: ${env:VOICE_AI_WEBHOOK_SECRET, ''}
     VOICE_TRANSPORT_ENABLED: ${env:VOICE_TRANSPORT_ENABLED, 'true'}
     VOICE_HOTEL_ENABLED: ${env:VOICE_HOTEL_ENABLED, 'true'}
+    PROCESSOR_LAMBDA_ARN: !GetAtt ProcessorLambdaFunction.Arn
+    CALLBACK_SCHEDULER_ROLE_ARN: !GetAtt CallbackSchedulerRole.Arn
   iam:
     role:
       statements:
@@ -102,6 +104,16 @@ provider:
           Resource:
             - !GetAtt AuditLogTable.Arn
             - !Sub '${AuditLogTable.Arn}/index/*'
+        - Effect: Allow
+          Action:
+            - scheduler:CreateSchedule
+            - scheduler:DeleteSchedule
+            - scheduler:GetSchedule
+          Resource: !Sub 'arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/callback-*'
+        - Effect: Allow
+          Action:
+            - iam:PassRole
+          Resource: !GetAtt CallbackSchedulerRole.Arn
 
 functions:
   core:
@@ -214,6 +226,35 @@ resources:
         RedrivePolicy:
           deadLetterTargetArn: !GetAtt AuditQueueDlq.Arn
           maxReceiveCount: 5
+
+    CallbackSchedulerRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: ${self:service}-${sls:stage}-callback-scheduler
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: scheduler.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: InvokeProcessorForCallbacks
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - lambda:InvokeFunction
+                  Resource: !GetAtt ProcessorLambdaFunction.Arn
+
+    ProcessorCallbackSchedulePermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        FunctionName: !Ref ProcessorLambdaFunction
+        Action: lambda:InvokeFunction
+        Principal: scheduler.amazonaws.com
+        SourceArn: !Sub 'arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/callback-*'
 
     AuditLogTable:
       Type: AWS::DynamoDB::Table
