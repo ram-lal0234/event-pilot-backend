@@ -205,6 +205,7 @@ model Guest {
   ivrRespondedAt DateTime?     @map("ivr_responded_at")
   followUpStatus FollowUpStatus @default(NONE) @map("follow_up_status")
   callbackAt     DateTime?     @map("callback_at")
+  callbackTriggered Boolean    @default(false) @map("callback_triggered")
   lastContactedAt DateTime?    @map("last_contacted_at")
   assignedTo     String?       @map("assigned_to")
   needsCab       Boolean?      @map("needs_cab")

@@ -76,6 +76,10 @@ provider:
     VOICE_AI_WEBHOOK_SECRET: ${env:VOICE_AI_WEBHOOK_SECRET, ''}
     VOICE_TRANSPORT_ENABLED: ${env:VOICE_TRANSPORT_ENABLED, 'true'}
     VOICE_HOTEL_ENABLED: ${env:VOICE_HOTEL_ENABLED, 'true'}
+    REALTIME_PROVIDER: apigateway
+    WS_CONNECTIONS_TABLE_NAME: !Ref WsConnectionsTable
+    WEBSOCKET_API_STAGE: ${sls:stage}
+    WEBSOCKET_API_SSM_PARAMETER: !Sub '/${self:service}/${sls:stage}/websocket-api-id'
   iam:
     role:
       statements:
@@ -102,10 +106,40 @@ provider:
           Resource:
             - !GetAtt AuditLogTable.Arn
             - !Sub '${AuditLogTable.Arn}/index/*'
+        - Effect: Allow
+          Action:
+            - scheduler:CreateSchedule
+            - scheduler:DeleteSchedule
+            - scheduler:GetSchedule
+          Resource: !Sub 'arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/callback-*'
+        - Effect: Allow
+          Action:
+            - iam:PassRole
+          Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${self:service}-${sls:stage}-callback-scheduler'
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+            - dynamodb:UpdateItem
+          Resource:
+            - !GetAtt WsConnectionsTable.Arn
+            - !Sub '${WsConnectionsTable.Arn}/index/*'
+        - Effect: Allow
+          Action:
+            - execute-api:ManageConnections
+          Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/POST/@connections/*'
+        - Effect: Allow
+          Action:
+            - ssm:GetParameter
+          Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${self:service}/${sls:stage}/websocket-api-id'
 
 functions:
   core:
     handler: src/lambda/core.handler
+    environment:
+      PROCESSOR_LAMBDA_ARN: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${sls:stage}-processor'
+      CALLBACK_SCHEDULER_ROLE_ARN: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${self:service}-${sls:stage}-callback-scheduler'
     layers:
       - !Ref DependenciesLambdaLayer
     events:
@@ -115,6 +149,9 @@ functions:
 
   webhook:
     handler: src/lambda/webhook.handler
+    environment:
+      PROCESSOR_LAMBDA_ARN: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${sls:stage}-processor'
+      CALLBACK_SCHEDULER_ROLE_ARN: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${self:service}-${sls:stage}-callback-scheduler'
     package:
       patterns:
         - '!src/**'
@@ -155,6 +192,53 @@ functions:
     layers:
       - !Ref DependenciesLambdaLayer
       - !Ref SharedCodeLambdaLayer
+
+  wsConnect:
+    handler: src/lambda/websocket.connect
+    package:
+      patterns:
+        - '!src/**'
+        - 'src/lambda/websocket.js'
+        - 'src/utils/realtime-auth.js'
+        - 'src/utils/realtime-client-id.js'
+        - 'src/config/env.js'
+        - 'src/repositories/realtime-connection.repository.js'
+        - 'src/services/realtime-connection-lifecycle.service.js'
+        - 'src/services/realtime-push.service.js'
+    layers:
+      - !Ref DependenciesLambdaLayer
+    events:
+      - websocket:
+          route: $connect
+
+  wsDisconnect:
+    handler: src/lambda/websocket.disconnect
+    package:
+      patterns:
+        - '!src/**'
+        - 'src/lambda/websocket.js'
+        - 'src/repositories/realtime-connection.repository.js'
+        - 'src/config/env.js'
+    layers:
+      - !Ref DependenciesLambdaLayer
+    events:
+      - websocket:
+          route: $disconnect
+
+  wsDefault:
+    handler: src/lambda/websocket.defaultHandler
+    package:
+      patterns:
+        - '!src/**'
+        - 'src/lambda/websocket.js'
+        - 'src/repositories/realtime-connection.repository.js'
+        - 'src/config/env.js'
+        - 'src/utils/realtime-client-id.js'
+    layers:
+      - !Ref DependenciesLambdaLayer
+    events:
+      - websocket:
+          route: $default
 
   auditProcessor:
     handler: src/lambda/audit-processor.handler
@@ -214,6 +298,77 @@ resources:
         RedrivePolicy:
           deadLetterTargetArn: !GetAtt AuditQueueDlq.Arn
           maxReceiveCount: 5
+
+    CallbackSchedulerRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: ${self:service}-${sls:stage}-callback-scheduler
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: scheduler.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: InvokeProcessorForCallbacks
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - lambda:InvokeFunction
+                  Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${sls:stage}-processor'
+
+    ProcessorCallbackSchedulePermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        FunctionName: ${self:service}-${sls:stage}-processor
+        Action: lambda:InvokeFunction
+        Principal: scheduler.amazonaws.com
+        SourceArn: !Sub 'arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/callback-*'
+
+    # WebsocketsApi id for runtime push (SSM avoids CFN circular dependency on Lambda env).
+    WebsocketApiIdParameter:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: !Sub '/${self:service}/${sls:stage}/websocket-api-id'
+        Type: String
+        Value: !Ref WebsocketsApi
+
+    WsConnectionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-${sls:stage}-ws-connections
+        BillingMode: PAY_PER_REQUEST
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+        AttributeDefinitions:
+          - AttributeName: connectionId
+            AttributeType: S
+          - AttributeName: accountId
+            AttributeType: S
+          - AttributeName: accountClientKey
+            AttributeType: S
+        KeySchema:
+          - AttributeName: connectionId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: accountId-index
+            KeySchema:
+              - AttributeName: accountId
+                KeyType: HASH
+              - AttributeName: connectionId
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: accountClient-index
+            KeySchema:
+              - AttributeName: accountClientKey
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
 
     AuditLogTable:
       Type: AWS::DynamoDB::Table
@@ -282,3 +437,13 @@ resources:
           - ReportBatchItemFailures
         ScalingConfig:
           MaximumConcurrency: ${env:AUDIT_MAX_QUEUE_CONCURRENCY, 2}
+
+outputs:
+  WebsocketUrl:
+    Description: WebSocket URL for dashboard clients (set NEXT_PUBLIC_WS_URL)
+    Value: !Sub 'wss://${WebsocketsApi}.execute-api.${AWS::Region}.amazonaws.com/${sls:stage}'
+  WebsocketApiId:
+    Description: API Gateway WebSocket API id (also in SSM)
+    Value: !Ref WebsocketsApi
+  WsConnectionsTableName:
+    Value: !Ref WsConnectionsTable

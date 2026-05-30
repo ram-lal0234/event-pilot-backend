@@ -1,6 +1,7 @@
 const guestRepository = require('../repositories/guest.repository');
 const ivrRepository = require('../repositories/ivr.repository');
 const callRepository = require('../repositories/call.repository');
+const { publishCallEventAsync } = require('./realtime-events');
 const auditService = require('./audit.service');
 const { canTransition, isStaleTransition, normalizePlivoStatus } = require('./call-state.service');
 const AppError = require('../utils/AppError');
@@ -149,6 +150,20 @@ const processPlivoEvent = async (payload) => {
       nextStatus
     }
   });
+
+  if (nextStatus === 'ANSWERED' || nextStatus === 'AI_ACTIVE') {
+    void publishCallEventAsync(call.eventId, 'call_answered', {
+      callId: call.id,
+      guestId: call.guestId,
+      status: nextStatus
+    });
+  } else if (nextStatus === 'COMPLETED' || nextStatus === 'FAILED') {
+    void publishCallEventAsync(call.eventId, 'call_completed', {
+      callId: call.id,
+      guestId: call.guestId,
+      status: nextStatus
+    });
+  }
 
   return { processed: true, callUuid, eventType, status: nextStatus };
 };

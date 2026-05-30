@@ -2,6 +2,7 @@ const guestRepository = require('../repositories/guest.repository');
 const checkinRepository = require('../repositories/checkin.repository');
 const accessService = require('./access.service');
 const auditService = require('./audit.service');
+const { publishGuestEventAsync } = require('./realtime-events');
 const AppError = require('../utils/AppError');
 
 const scan = async ({ qrCode, method, locationType }, user) => {
@@ -23,6 +24,8 @@ const scan = async ({ qrCode, method, locationType }, user) => {
   });
 
   if (!alreadyCheckedIn) {
+    publishGuestEventAsync(guest.eventId, 'checkin', guest, { locationType, method });
+
     await auditService.enqueueAuditLog({
       eventId: guest.eventId,
       userId: user && user.id,

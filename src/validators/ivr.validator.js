@@ -5,6 +5,11 @@ const triggerIvrSchema = Joi.object({
   callMode: Joi.string().valid('ai', 'ivr')
 });
 
+const triggerBulkIvrSchema = Joi.object({
+  eventId: Joi.string().guid({ version: ['uuidv4', 'uuidv5'] }).required(),
+  callMode: Joi.string().valid('ai', 'ivr')
+});
+
 const ivrWebhookSchema = Joi.object({
   guestId: Joi.string().guid({ version: ['uuidv4', 'uuidv5'] }).required(),
   callStatus: Joi.string().trim().max(80).default('COMPLETED'),
@@ -16,5 +21,6 @@ const ivrWebhookSchema = Joi.object({
 
 module.exports = {
   triggerIvrSchema,
+  triggerBulkIvrSchema,
   ivrWebhookSchema
 };
