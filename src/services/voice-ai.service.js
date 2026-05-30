@@ -5,6 +5,7 @@ const callRepository = require('../repositories/call.repository');
 const auditService = require('./audit.service');
 const ivrService = require('./ivr.service');
 const callbackScheduleService = require('./callback-schedule.service');
+const { publishGuestEventAsync } = require('./realtime-events');
 const logger = require('../utils/logger');
 const AppError = require('../utils/AppError');
 const { parseCallbackAtPayload } = require('../utils/parse-callback-time');
@@ -444,6 +445,23 @@ const applyRsvpResult = async (rawBody) => {
         callbackAt: updatedGuest.callbackAt
       });
     }
+  }
+
+  if (applyGuestUpdate) {
+    publishGuestEventAsync(guest.eventId, 'rsvp_updated', updatedGuest, {
+      callOutcome,
+      call: {
+        callUuid: payload.callUuid || null,
+        status: payload.callStatus || callOutcome.toUpperCase()
+      }
+    });
+    publishGuestEventAsync(guest.eventId, 'call_completed', updatedGuest, {
+      callOutcome,
+      call: {
+        callUuid: payload.callUuid || null,
+        status: 'COMPLETED'
+      }
+    });
   }
 
   await auditService.enqueueAuditLog({

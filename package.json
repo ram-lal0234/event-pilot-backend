@@ -20,9 +20,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.828.0",
     "@aws-sdk/client-dynamodb": "^3.1053.0",
     "@aws-sdk/client-scheduler": "^3.1057.0",
     "@aws-sdk/client-sqs": "^3.828.0",
+    "@aws-sdk/client-ssm": "^3.1057.0",
     "@aws-sdk/lib-dynamodb": "^3.1053.0",
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
@@ -35,7 +37,8 @@
     "jsonwebtoken": "^9.0.2",
     "qrcode": "^1.5.4",
     "serverless-http": "^3.2.0",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.7",
