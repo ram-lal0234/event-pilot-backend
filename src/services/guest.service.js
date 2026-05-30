@@ -511,6 +511,10 @@ const deleteGuest = async (id, user) => {
 
 const triggerIvr = async (guestId, user, callMode) => voiceCallService.triggerOutboundCall(guestId, user, { callMode });
 
+const triggerBulkIvr = async (eventId, user, callMode) => (
+  voiceCallService.triggerBulkOutboundCalls(eventId, user, { callMode })
+);
+
 const uploadCsv = async ({ eventId, csv }, user) => {
   await assertEventAccess(eventId, user);
 
@@ -602,5 +606,6 @@ module.exports = {
   getGuestCallLogs,
   deleteGuest,
   triggerIvr,
+  triggerBulkIvr,
   uploadCsv
 };
