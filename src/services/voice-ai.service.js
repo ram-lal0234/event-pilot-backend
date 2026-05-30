@@ -5,7 +5,8 @@ const callRepository = require('../repositories/call.repository');
 const auditService = require('./audit.service');
 const ivrService = require('./ivr.service');
 const callbackScheduleService = require('./callback-schedule.service');
-const { publishGuestEventAsync } = require('./realtime-events');
+const { canTransition, isStaleTransition } = require('./call-state.service');
+const { publishGuestEventAsync, publishCallEventAsync } = require('./realtime-events');
 const logger = require('../utils/logger');
 const AppError = require('../utils/AppError');
 const { parseCallbackAtPayload } = require('../utils/parse-callback-time');
@@ -201,6 +202,97 @@ const mapOutcomeToRsvpStatus = ({ rsvpStatus, callOutcome }) => {
 
 const shouldUpdateGuestRsvp = (callOutcome) => {
   return !['wrong_person', 'voicemail', 'no_answer', 'opted_out'].includes(callOutcome);
+};
+
+const TERMINAL_FAILED_OUTCOMES = new Set(['no_answer', 'voicemail', 'wrong_person', 'opted_out']);
+
+const resolveTerminalCallStatus = (callOutcome) => (
+  TERMINAL_FAILED_OUTCOMES.has(callOutcome) ? 'FAILED' : 'COMPLETED'
+);
+
+const buildCallLinkPatch = (call, { callUuid, callOutcome }) => {
+  if (!call) {
+    return null;
+  }
+
+  const patch = { lastEventAt: new Date() };
+  const terminalStatus = resolveTerminalCallStatus(callOutcome);
+
+  if (callUuid && !call.callUuid) {
+    patch.callUuid = callUuid;
+  }
+
+  if (
+    call.status !== terminalStatus
+    && canTransition(call.status, terminalStatus)
+    && !isStaleTransition(call.status, terminalStatus)
+  ) {
+    patch.status = terminalStatus;
+  }
+
+  return patch;
+};
+
+const linkCallFromRsvpWebhook = async ({ payload, guestId, callOutcome }) => {
+  const callUuid = payload.callUuid || null;
+  const callId = payload.callId || null;
+
+  let call = null;
+
+  if (callUuid) {
+    call = await callRepository.findByCallUuid(callUuid);
+  }
+
+  if (!call && callId) {
+    call = await callRepository.findById(callId);
+  }
+
+  if (!call) {
+    call = await callRepository.findActiveByGuestId(guestId);
+  }
+
+  if (!call) {
+    logger.warn('RSVP webhook could not link Call row', {
+      guestId,
+      callUuid,
+      callId
+    });
+
+    return { callLinked: false, reason: 'CALL_NOT_FOUND' };
+  }
+
+  const patch = buildCallLinkPatch(call, { callUuid, callOutcome });
+
+  const updated = await callRepository.update(call.id, patch);
+
+  if (patch.status === 'COMPLETED' || patch.status === 'FAILED') {
+    void publishCallEventAsync(updated.eventId, 'call_completed', {
+      callId: updated.id,
+      guestId: updated.guestId,
+      status: patch.status
+    });
+  }
+
+  await auditService.enqueueAuditLog({
+    eventId: updated.eventId,
+    action: 'AI_VOICE_RSVP_CALL_LINKED',
+    entityType: 'Call',
+    entityId: updated.id,
+    metadata: {
+      guestId,
+      callUuid: updated.callUuid || callUuid,
+      previousStatus: call.status,
+      status: updated.status,
+      callOutcome
+    }
+  });
+
+  return {
+    callLinked: true,
+    callId: updated.id,
+    callUuid: updated.callUuid || callUuid,
+    status: updated.status
+  };
 };
 
 const shouldApplyGuestUpdate = ({ guest, callOutcome, rsvpStatus, recentLog }) => {
@@ -464,6 +556,18 @@ const applyRsvpResult = async (rawBody) => {
     });
   }
 
+  if (!payload.callUuid && !payload.callId) {
+    logger.warn('RSVP webhook missing callUuid and callId — add both to Plivo flow HTTP action body', {
+      guestId: payload.guestId
+    });
+  }
+
+  const callLink = await linkCallFromRsvpWebhook({
+    payload,
+    guestId: payload.guestId,
+    callOutcome
+  });
+
   await auditService.enqueueAuditLog({
     eventId: guest.eventId,
     action: applyGuestUpdate ? 'AI_VOICE_RESPONSE_CAPTURED' : 'AI_VOICE_RESPONSE_LOGGED',
@@ -479,7 +583,8 @@ const applyRsvpResult = async (rawBody) => {
       needsHotel: payload.needsHotel ?? null,
       guestNotes: payload.guestNotes || null,
       language: payload.language || null,
-      callUuid: payload.callUuid || null,
+      callUuid: payload.callUuid || callLink.callUuid || null,
+      callLink,
       callbackAt: updatedGuest.callbackAt || null,
       callbackSchedule: callbackScheduleResult
     }
@@ -492,7 +597,8 @@ const applyRsvpResult = async (rawBody) => {
     guest: updatedGuest,
     rsvpStatus: applyGuestUpdate ? rsvpStatus : guest.rsvpStatus,
     rsvpUpdated: applyGuestUpdate,
-    callbackScheduled: Boolean(callbackScheduleResult?.scheduled)
+    callbackScheduled: Boolean(callbackScheduleResult?.scheduled),
+    callLink
   };
 };
 
@@ -549,5 +655,8 @@ module.exports = {
   applyRsvpResult,
   handleLifecycleEvent,
   isLifecycleEvent,
-  isRsvpResultEvent
+  isRsvpResultEvent,
+  buildCallLinkPatch,
+  linkCallFromRsvpWebhook,
+  resolveTerminalCallStatus
 };

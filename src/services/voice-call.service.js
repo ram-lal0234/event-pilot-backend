@@ -67,6 +67,19 @@ const resolveCallMode = (override) => {
   return 'ivr';
 };
 
+const assertVoiceCallEnabledForMode = (event, callMode) => {
+  const setting = event.setting;
+  if (!setting) return;
+
+  if (callMode === 'ai' && setting.voiceAiEnabled === false) {
+    throw new AppError('AI voice calls are disabled for this event.', 409, 'VOICE_AI_CALLS_DISABLED');
+  }
+
+  if (callMode === 'ivr' && setting.ivrEnabled === false) {
+    throw new AppError('IVR calls are disabled for this event.', 409, 'IVR_CALLS_DISABLED');
+  }
+};
+
 const buildAgentContext = async (guest, call) => {
   const event = await prisma.event.findUnique({
     where: { id: guest.eventId },
@@ -192,10 +205,6 @@ const triggerOutboundCall = async (guestId, user, { callMode: callModeOverride }
     throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND');
   }
 
-  if (event.setting && event.setting.ivrEnabled === false) {
-    throw new AppError('Voice calls are disabled for this event.', 409, 'VOICE_CALLS_DISABLED');
-  }
-
   if (guest.rsvpStatus !== 'PENDING') {
     throw new AppError(
       'Voice calls can only be triggered for guests with pending RSVP.',
@@ -215,6 +224,7 @@ const triggerOutboundCall = async (guestId, user, { callMode: callModeOverride }
   }
 
   const callMode = resolveCallMode(callModeOverride);
+  assertVoiceCallEnabledForMode(event, callMode);
   return queueOutboundCall({ guest, user, callMode });
 };
 
@@ -235,10 +245,6 @@ const triggerScheduledOutboundCall = async (guestId, user, { callMode: callModeO
     throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND');
   }
 
-  if (event.setting && event.setting.ivrEnabled === false) {
-    throw new AppError('Voice calls are disabled for this event.', 409, 'VOICE_CALLS_DISABLED');
-  }
-
   if (guest.rsvpStatus !== 'PENDING') {
     throw new AppError(
       'Voice calls can only be triggered for guests with pending RSVP.',
@@ -258,6 +264,7 @@ const triggerScheduledOutboundCall = async (guestId, user, { callMode: callModeO
   }
 
   const callMode = resolveCallMode(callModeOverride);
+  assertVoiceCallEnabledForMode(event, callMode);
   return queueOutboundCall({ guest, user, callMode });
 };
 
@@ -273,11 +280,8 @@ const triggerBulkOutboundCalls = async (eventId, user, { callMode: callModeOverr
     throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND');
   }
 
-  if (event.setting && event.setting.ivrEnabled === false) {
-    throw new AppError('Voice calls are disabled for this event.', 409, 'VOICE_CALLS_DISABLED');
-  }
-
   const callMode = resolveCallMode(callModeOverride);
+  assertVoiceCallEnabledForMode(event, callMode);
 
   const guests = await prisma.guest.findMany({
     where: {

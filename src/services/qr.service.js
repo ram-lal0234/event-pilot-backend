@@ -1,3 +1,4 @@
+const prisma = require('../config/db');
 const guestRepository = require('../repositories/guest.repository');
 const checkinRepository = require('../repositories/checkin.repository');
 const accessService = require('./access.service');
@@ -13,6 +14,15 @@ const scan = async ({ qrCode, method, locationType }, user) => {
   }
 
   await accessService.assertEventAccess(user.id, guest.eventId, { level: 'FULL' });
+
+  const event = await prisma.event.findUnique({
+    where: { id: guest.eventId },
+    include: { setting: true }
+  });
+
+  if (event?.setting && event.setting.qrEnabled === false) {
+    throw new AppError('QR check-in is disabled for this event.', 409, 'QR_CHECKIN_DISABLED');
+  }
 
   const existing = await checkinRepository.findByGuestAndLocation(guest.id, locationType);
   const alreadyCheckedIn = Boolean(existing);

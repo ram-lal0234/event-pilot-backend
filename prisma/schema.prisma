@@ -177,10 +177,11 @@ model Event {
 }
 
 model EventSetting {
-  id         String   @id @default(uuid()) @db.Uuid
-  eventId    String   @unique @map("event_id") @db.Uuid
-  ivrEnabled Boolean  @default(true) @map("ivr_enabled")
-  qrEnabled  Boolean  @default(true) @map("qr_enabled")
+  id             String   @id @default(uuid()) @db.Uuid
+  eventId        String   @unique @map("event_id") @db.Uuid
+  voiceAiEnabled Boolean  @default(true) @map("voice_ai_enabled")
+  ivrEnabled     Boolean  @default(true) @map("ivr_enabled")
+  qrEnabled      Boolean  @default(true) @map("qr_enabled")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 

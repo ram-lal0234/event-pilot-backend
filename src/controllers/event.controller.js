@@ -19,7 +19,27 @@ const listEvents = async (req, res, next) => {
   }
 };
 
+const getEvent = async (req, res, next) => {
+  try {
+    const event = await eventService.getEvent(req.params.id, req.user);
+    response.success(res, event);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateEvent = async (req, res, next) => {
+  try {
+    const event = await eventService.updateEvent(req.params.id, req.body, req.user);
+    response.success(res, event, 'Event updated');
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createEvent,
-  listEvents
+  listEvents,
+  getEvent,
+  updateEvent
 };

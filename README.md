@@ -57,7 +57,7 @@ Base: `{PUBLIC_API_URL}` (e.g. `https://78dpbxqf57.execute-api.ap-south-1.amazon
 | Plivo setting | URL | Payload |
 |---------------|-----|---------|
 | **Hangup / call-ended callback** | `POST /webhook/plivo/ai/hangup` | `{ "eventType": "Hangup", "status": "COMPLETED", "callUuid": "..." }` |
-| **RSVP + no-answer reporting** (flow HTTP actions) | `POST /webhook/plivo/ai/rsvp` | `{ "guestId", "rsvpStatus", "callOutcome", "groupSize", ... }` |
+| **RSVP + no-answer reporting** (flow HTTP actions) | `POST /webhook/plivo/ai/rsvp` | `{ "guestId", "callUuid", "callOutcome", "rsvpStatus", "groupSize", ... }` |
 | **Recording / transcript callback** | `POST /webhook/plivo/ai/transcript` | Nested `data.object` with `event_data.recording_url`, `transcription` |
 | **Error callback** (optional) | `POST /webhook/plivo/ai/error` | Platform/agent error payload |
 
@@ -94,11 +94,53 @@ Legacy: `POST /api/voice/ai/result` auto-routes to hangup or rsvp; prefer dedica
 |------|--------|
 | **max_call_duration** | Set to **240** (or 300), not **4** seconds |
 | **RSVP reporting action URL** | `https://<api-host>/webhook/plivo/ai/rsvp` (not `example.com` placeholder) |
-| **RSVP action body** | Use the flow input scope for guest ID: `"guest_id": "{{Start.http.params.guest_id}}"` |
+| **RSVP action body** | Include guest ID, call UUID, and our call row id (see JSON below) |
 | **No-answer reporting URL** | `https://<api-host>/webhook/plivo/ai/rsvp` |
+| **No-answer action body** | Same shape as RSVP — `callOutcome: "no_answer"`, plus `callUuid` and `guest_id` |
 | **Flow hangup callback** | `https://<api-host>/webhook/plivo/ai/hangup` |
 | **Webhook secret** | If `VOICE_AI_WEBHOOK_SECRET` is set, add header `X-EventPilot-Voice-Secret` on every result POST from the flow |
 | **Flow input variables** | Match outbound JSON keys: `call_id`, `guest_id`, `guest_name`, `phone_number`, `from_number`, `event_name`, `event_date_spoken`, `event_location_spoken`, `host_label`, `existing_pickup_location`, `transport_enabled`, `hotel_enabled` |
+
+**RSVP / no-answer HTTP action JSON** (Plivo Agent Studio → HTTP Request node body). Use your flow’s variable names for `call_uuid` if they differ (e.g. `{{Call.call_uuid}}`, `{{call_uuid}}`):
+
+```json
+{
+  "guest_id": "{{Start.http.params.guest_id}}",
+  "call_id": "{{Start.http.params.call_id}}",
+  "callUuid": "{{Call.call_uuid}}",
+  "callOutcome": "completed",
+  "rsvpStatus": "CONFIRMED",
+  "groupSize": 2,
+  "pickupLocation": "",
+  "needsCab": false,
+  "needsHotel": false,
+  "guestNotes": "",
+  "language": "hi"
+}
+```
+
+No-answer branch example:
+
+```json
+{
+  "guest_id": "{{Start.http.params.guest_id}}",
+  "call_id": "{{Start.http.params.call_id}}",
+  "callUuid": "{{Call.call_uuid}}",
+  "callOutcome": "no_answer",
+  "rsvpStatus": "PENDING"
+}
+```
+
+`callUuid` links the webhook to the `calls` row created when you trigger the call. Without it, guest RSVP still updates but call logs may not join in the dashboard.
+
+**Verify locally** (after trigger call creates a `calls` row):
+
+```bash
+cd event-pilot-backend
+node scripts/verify-voice-rsvp-e2e.js
+```
+
+Set `GUEST_ID`, `CALL_ID`, `CALL_UUID`, and optionally `API_URL` / `VOICE_AI_WEBHOOK_SECRET` in the environment.
 
 Backend already: POSTs Agent Flow invoke URL directly (not Call API `answer_url`); sends JSON booleans; normalizes E.164; validates payload before invoke; accepts camelCase or snake_case on `/api/voice/ai/result`; avoids downgrading a strong RSVP when a weaker hangup arrives later.
 

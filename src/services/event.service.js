@@ -1,7 +1,20 @@
 const prisma = require('../config/db');
 const eventRepository = require('../repositories/event.repository');
+const eventSettingRepository = require('../repositories/event-setting.repository');
 const auditService = require('./audit.service');
 const accessService = require('./access.service');
+const AppError = require('../utils/AppError');
+
+const formatEventSetting = (setting) => ({
+  voiceAiEnabled: setting?.voiceAiEnabled ?? true,
+  ivrEnabled: setting?.ivrEnabled ?? true,
+  qrEnabled: setting?.qrEnabled ?? true
+});
+
+const attachSetting = (event) => ({
+  ...event,
+  setting: formatEventSetting(event.setting)
+});
 
 const attachEventStats = async (events) => {
   if (!events.length) return [];
@@ -43,6 +56,8 @@ const createEvent = async (payload, user) => {
     accountId: member.accountId
   });
 
+  await eventSettingRepository.ensureForEvent(event.id);
+
   await auditService.enqueueAuditLog({
     eventId: event.id,
     userId: user.id,
@@ -65,7 +80,68 @@ const listEvents = async (user) => {
   return attachEventStats(events);
 };
 
+const getEvent = async (eventId, user) => {
+  await accessService.assertEventAccess(user.id, eventId, { level: 'READ' });
+
+  const event = await eventRepository.findByIdWithSetting(eventId);
+
+  if (!event || event.deletedAt) {
+    throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND');
+  }
+
+  if (!event.setting) {
+    event.setting = await eventSettingRepository.ensureForEvent(eventId);
+  }
+
+  const [withStats] = await attachEventStats([event]);
+  return attachSetting(withStats);
+};
+
+const updateEvent = async (eventId, payload, user) => {
+  await accessService.assertEventAccess(user.id, eventId, { level: 'FULL' });
+
+  const event = await eventRepository.findById(eventId);
+
+  if (!event || event.deletedAt) {
+    throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND');
+  }
+
+  const eventPatch = {};
+  if (payload.name !== undefined) eventPatch.name = payload.name;
+  if (payload.date !== undefined) eventPatch.date = new Date(payload.date);
+  if (payload.location !== undefined) eventPatch.location = payload.location;
+
+  if (Object.keys(eventPatch).length) {
+    await eventRepository.update(eventId, eventPatch);
+  }
+
+  const settingPatch = {};
+  if (payload.voiceAiEnabled !== undefined) settingPatch.voiceAiEnabled = payload.voiceAiEnabled;
+  if (payload.ivrEnabled !== undefined) settingPatch.ivrEnabled = payload.ivrEnabled;
+  if (payload.qrEnabled !== undefined) settingPatch.qrEnabled = payload.qrEnabled;
+
+  if (Object.keys(settingPatch).length) {
+    await eventSettingRepository.upsertByEventId(eventId, settingPatch);
+  }
+
+  await auditService.enqueueAuditLog({
+    eventId,
+    userId: user.id,
+    action: 'EVENT_UPDATED',
+    entityType: 'Event',
+    entityId: eventId,
+    metadata: {
+      ...eventPatch,
+      ...settingPatch
+    }
+  });
+
+  return getEvent(eventId, user);
+};
+
 module.exports = {
   createEvent,
-  listEvents
+  listEvents,
+  getEvent,
+  updateEvent
 };

@@ -24,9 +24,25 @@ const findById = (id) => {
   });
 };
 
+const findByIdWithSetting = (id) => {
+  return prisma.event.findUnique({
+    where: { id },
+    include: { setting: true }
+  });
+};
+
+const update = (id, data) => {
+  return prisma.event.update({
+    where: { id },
+    data
+  });
+};
+
 module.exports = {
   create,
   findByCreator,
   findByAccountId,
-  findById
+  findById,
+  findByIdWithSetting,
+  update
 };
