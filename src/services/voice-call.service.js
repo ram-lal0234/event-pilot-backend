@@ -261,9 +261,96 @@ const triggerScheduledOutboundCall = async (guestId, user, { callMode: callModeO
   return queueOutboundCall({ guest, user, callMode });
 };
 
+const triggerBulkOutboundCalls = async (eventId, user, { callMode: callModeOverride } = {}) => {
+  await accessService.assertCanTriggerVoice(user.id, eventId);
+
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    include: { setting: true }
+  });
+
+  if (!event) {
+    throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND');
+  }
+
+  if (event.setting && event.setting.ivrEnabled === false) {
+    throw new AppError('Voice calls are disabled for this event.', 409, 'VOICE_CALLS_DISABLED');
+  }
+
+  const callMode = resolveCallMode(callModeOverride);
+
+  const guests = await prisma.guest.findMany({
+    where: {
+      eventId,
+      rsvpStatus: 'PENDING'
+    },
+    orderBy: { createdAt: 'asc' }
+  });
+
+  const summary = {
+    totalPending: guests.length,
+    queued: 0,
+    skipped: 0,
+    skippedReasons: {
+      callInProgress: 0,
+      error: 0
+    },
+    callIds: []
+  };
+
+  for (const guest of guests) {
+    const activeCall = await callRepository.findActiveByGuestId(guest.id);
+
+    if (activeCall) {
+      summary.skipped += 1;
+      summary.skippedReasons.callInProgress += 1;
+      continue;
+    }
+
+    try {
+      const result = await queueOutboundCall({ guest, user, callMode });
+      summary.queued += 1;
+      summary.callIds.push(result.callId);
+    } catch (error) {
+      summary.skipped += 1;
+      summary.skippedReasons.error += 1;
+    }
+  }
+
+  await auditService.enqueueAuditLog({
+    eventId,
+    userId: user.id,
+    action: 'BULK_VOICE_CAMPAIGN_QUEUED',
+    entityType: 'Event',
+    entityId: eventId,
+    metadata: {
+      callMode,
+      ...summary,
+      queuedBy: user.id
+    }
+  });
+
+  const realtimePush = require('./realtime-push.service');
+  realtimePush.publishForEventAsync(eventId, {
+    type: 'campaign_progress',
+    campaign: {
+      queued: summary.queued,
+      skipped: summary.skipped,
+      totalPending: summary.totalPending,
+      callMode
+    }
+  });
+
+  return {
+    callMode,
+    ...summary
+  };
+};
+
 module.exports = {
   triggerOutboundCall,
   triggerScheduledOutboundCall,
+  triggerBulkOutboundCalls,
   resolveCallMode,
   buildAgentContext
 };

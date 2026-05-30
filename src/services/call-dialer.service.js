@@ -1,6 +1,7 @@
 const callRepository = require('../repositories/call.repository');
 const auditService = require('./audit.service');
 const plivoService = require('./plivo.service');
+const { publishCallEventAsync } = require('./realtime-events');
 const logger = require('../utils/logger');
 
 const processCallJob = async (job) => {
@@ -20,6 +21,11 @@ const processCallJob = async (job) => {
   }
 
   await callRepository.update(call.id, { status: 'DIALING' });
+  void publishCallEventAsync(call.eventId, 'call_started', {
+    callId: call.id,
+    guestId: call.guestId,
+    status: 'DIALING'
+  });
   await auditService.enqueueAuditLog({
     eventId: call.eventId,
     action: 'CALL_DIALING',
@@ -77,6 +83,11 @@ const processCallJob = async (job) => {
     });
   } catch (error) {
     await callRepository.update(call.id, { status: 'FAILED' });
+    void publishCallEventAsync(call.eventId, 'call_completed', {
+      callId: call.id,
+      guestId: call.guestId,
+      status: 'FAILED'
+    });
     await auditService.enqueueAuditLog({
       eventId: call.eventId,
       action: 'CALL_DIAL_FAILED',

@@ -5,6 +5,7 @@ const prisma = require('../config/db');
 const guestRepository = require('../repositories/guest.repository');
 const guestInviteRepository = require('../repositories/guest-invite.repository');
 const callbackScheduleService = require('./callback-schedule.service');
+const { publishGuestEventAsync } = require('./realtime-events');
 const accessService = require('./access.service');
 const auditService = require('./audit.service');
 const voiceCallService = require('./voice-call.service');
@@ -294,6 +295,8 @@ const createGuest = async (payload, user) => {
     throw error;
   }
 
+  publishGuestEventAsync(guest.eventId, 'guest_added', guest);
+
   await auditService.enqueueAuditLog({
     eventId: guest.eventId,
     userId: user.id,
@@ -400,7 +403,15 @@ const updateGuest = async (id, payload, user) => {
   });
 
   const invite = await ensureGuestInvite(id);
-  return enrichGuest({ ...updatedGuest, invites: [{ code: invite.code }] });
+  const enriched = enrichGuest({ ...updatedGuest, invites: [{ code: invite.code }] });
+
+  if (changes.rsvpStatus) {
+    publishGuestEventAsync(guest.eventId, 'rsvp_updated', updatedGuest);
+  } else if (Object.keys(changes).length > 0) {
+    publishGuestEventAsync(guest.eventId, 'guest_updated', updatedGuest);
+  }
+
+  return enriched;
 };
 
 const updateGuestRsvp = async (id, payload, user) => {
@@ -419,6 +430,8 @@ const updateGuestRsvp = async (id, payload, user) => {
     lastContactedAt: new Date(),
     followUpStatus: payload.rsvpStatus === 'PENDING' ? 'NEEDS_FOLLOW_UP' : 'COMPLETED'
   });
+
+  publishGuestEventAsync(guest.eventId, 'rsvp_updated', updatedGuest);
 
   await auditService.enqueueAuditLog({
     eventId: guest.eventId,
@@ -497,6 +510,10 @@ const deleteGuest = async (id, user) => {
 };
 
 const triggerIvr = async (guestId, user, callMode) => voiceCallService.triggerOutboundCall(guestId, user, { callMode });
+
+const triggerBulkIvr = async (eventId, user, callMode) => (
+  voiceCallService.triggerBulkOutboundCalls(eventId, user, { callMode })
+);
 
 const uploadCsv = async ({ eventId, csv }, user) => {
   await assertEventAccess(eventId, user);
@@ -589,5 +606,6 @@ module.exports = {
   getGuestCallLogs,
   deleteGuest,
   triggerIvr,
+  triggerBulkIvr,
   uploadCsv
 };
