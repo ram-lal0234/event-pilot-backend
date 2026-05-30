@@ -4,8 +4,10 @@ const ivrRepository = require('../repositories/ivr.repository');
 const callRepository = require('../repositories/call.repository');
 const auditService = require('./audit.service');
 const ivrService = require('./ivr.service');
+const callbackScheduleService = require('./callback-schedule.service');
 const logger = require('../utils/logger');
 const AppError = require('../utils/AppError');
+const { parseCallbackAtPayload } = require('../utils/parse-callback-time');
 
 const RSVP_STATUSES = new Set(['CONFIRMED', 'DECLINED', 'PENDING']);
 
@@ -114,6 +116,7 @@ const normalizePayload = (body = {}) => {
     needsHotel: normalizeBoolean(body.needsHotel ?? body.needs_hotel),
     guestNotes: blankToNull(body.guestNotes ?? body.guest_notes),
     language: blankToNull(body.language),
+    callbackAt: body.callbackAt ?? body.callback_at ?? null,
     callOutcome: body.callOutcome || body.call_outcome,
     callStatus: body.callStatus || body.call_status || body.CallStatus,
     attempt: body.attempt,
@@ -394,20 +397,54 @@ const applyRsvpResult = async (rawBody) => {
     groupSizeCaptured: Boolean(parsedGroupSize)
   });
 
+  const now = new Date();
+  const notesText = payload.guestNotes || guest.guestNotes || null;
+
   const guestUpdate = applyGuestUpdate
     ? {
-      ivrRespondedAt: new Date(),
+      ivrRespondedAt: now,
       rsvpStatus,
       ...(parsedGroupSize && parsedGroupSize > 0 ? { groupSize: parsedGroupSize } : {}),
-      ...(payload.pickupLocation ? { pickupLocation: String(payload.pickupLocation).trim() } : {})
+      ...(payload.pickupLocation ? { pickupLocation: String(payload.pickupLocation).trim() } : {}),
+      ...(payload.needsCab !== undefined ? { needsCab: payload.needsCab } : {}),
+      ...(payload.needsHotel !== undefined ? { needsHotel: payload.needsHotel } : {}),
+      ...(notesText ? { guestNotes: notesText } : {}),
+      ...(payload.language ? { language: payload.language } : {})
     }
     : {
-      ivrRespondedAt: new Date(),
+      ivrRespondedAt: now,
       ...(parsedGroupSize && parsedGroupSize > 0 ? { groupSize: parsedGroupSize } : {}),
-      ...(payload.pickupLocation ? { pickupLocation: String(payload.pickupLocation).trim() } : {})
+      ...(payload.pickupLocation ? { pickupLocation: String(payload.pickupLocation).trim() } : {}),
+      ...(notesText ? { guestNotes: notesText } : {})
     };
 
+  if (callOutcome === 'callback_later') {
+    const callbackAt = parseCallbackAtPayload(payload.callbackAt, notesText, now);
+    guestUpdate.followUpStatus = 'CALLBACK_LATER';
+    guestUpdate.callbackTriggered = false;
+    if (callbackAt) {
+      guestUpdate.callbackAt = callbackAt;
+    }
+  }
+
   const updatedGuest = await guestRepository.update(payload.guestId, guestUpdate);
+
+  let callbackScheduleResult = null;
+
+  if (callOutcome === 'callback_later' && updatedGuest.callbackAt) {
+    try {
+      callbackScheduleResult = await callbackScheduleService.scheduleCallback(
+        payload.guestId,
+        updatedGuest.callbackAt,
+        { mode: 'ai' }
+      );
+    } catch (scheduleError) {
+      logger.error(scheduleError, {
+        guestId: payload.guestId,
+        callbackAt: updatedGuest.callbackAt
+      });
+    }
+  }
 
   await auditService.enqueueAuditLog({
     eventId: guest.eventId,
@@ -424,7 +461,9 @@ const applyRsvpResult = async (rawBody) => {
       needsHotel: payload.needsHotel ?? null,
       guestNotes: payload.guestNotes || null,
       language: payload.language || null,
-      callUuid: payload.callUuid || null
+      callUuid: payload.callUuid || null,
+      callbackAt: updatedGuest.callbackAt || null,
+      callbackSchedule: callbackScheduleResult
     }
   });
 
@@ -434,7 +473,8 @@ const applyRsvpResult = async (rawBody) => {
     guestUpdateSkipped: !applyGuestUpdate,
     guest: updatedGuest,
     rsvpStatus: applyGuestUpdate ? rsvpStatus : guest.rsvpStatus,
-    rsvpUpdated: applyGuestUpdate
+    rsvpUpdated: applyGuestUpdate,
+    callbackScheduled: Boolean(callbackScheduleResult?.scheduled)
   };
 };
 

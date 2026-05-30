@@ -204,12 +204,66 @@ const triggerOutboundCall = async (guestId, user, { callMode: callModeOverride }
     );
   }
 
+  const activeCall = await callRepository.findActiveByGuestId(guestId);
+
+  if (activeCall) {
+    throw new AppError(
+      'A call is already queued or in progress for this guest.',
+      409,
+      'CALL_IN_PROGRESS'
+    );
+  }
+
+  const callMode = resolveCallMode(callModeOverride);
+  return queueOutboundCall({ guest, user, callMode });
+};
+
+/** System-initiated callback (EventBridge) — skips role checks, keeps dial guards. */
+const triggerScheduledOutboundCall = async (guestId, user, { callMode: callModeOverride } = {}) => {
+  const guest = await guestRepository.findById(guestId);
+
+  if (!guest) {
+    throw new AppError('Guest not found', 404, 'GUEST_NOT_FOUND');
+  }
+
+  const event = await prisma.event.findUnique({
+    where: { id: guest.eventId },
+    include: { setting: true }
+  });
+
+  if (!event) {
+    throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND');
+  }
+
+  if (event.setting && event.setting.ivrEnabled === false) {
+    throw new AppError('Voice calls are disabled for this event.', 409, 'VOICE_CALLS_DISABLED');
+  }
+
+  if (guest.rsvpStatus !== 'PENDING') {
+    throw new AppError(
+      'Voice calls can only be triggered for guests with pending RSVP.',
+      409,
+      'VOICE_CALL_NOT_ALLOWED_FOR_RSVP_STATUS'
+    );
+  }
+
+  const activeCall = await callRepository.findActiveByGuestId(guestId);
+
+  if (activeCall) {
+    throw new AppError(
+      'A call is already queued or in progress for this guest.',
+      409,
+      'CALL_IN_PROGRESS'
+    );
+  }
+
   const callMode = resolveCallMode(callModeOverride);
   return queueOutboundCall({ guest, user, callMode });
 };
 
 module.exports = {
   triggerOutboundCall,
+  triggerScheduledOutboundCall,
   resolveCallMode,
   buildAgentContext
 };

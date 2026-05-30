@@ -30,6 +30,7 @@ const updateGuestSchema = Joi.object({
   groupSize: Joi.number().integer().min(1).max(100),
   followUpStatus: Joi.string().valid('NONE', 'NEEDS_FOLLOW_UP', 'CALLBACK_LATER', 'NO_ANSWER', 'VOICEMAIL', 'COMPLETED'),
   callbackAt: Joi.date().iso().allow(null),
+  callbackTriggered: Joi.boolean(),
   lastContactedAt: Joi.date().iso().allow(null),
   assignedTo: Joi.string().trim().max(120).allow(null, ''),
   needsCab: Joi.boolean().allow(null),

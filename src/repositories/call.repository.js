@@ -12,10 +12,21 @@ const updateByCallUuid = (callUuid, data) => prisma.call.update({ where: { callU
 
 const createEvent = (data) => prisma.callEvent.create({ data });
 
+const ACTIVE_CALL_STATUSES = ['QUEUED', 'DIALING', 'RINGING', 'ANSWERED', 'AI_ACTIVE'];
+
+const findActiveByGuestId = (guestId) => prisma.call.findFirst({
+  where: {
+    guestId,
+    status: { in: ACTIVE_CALL_STATUSES }
+  },
+  orderBy: { createdAt: 'desc' }
+});
+
 module.exports = {
   create,
   findById,
   findByCallUuid,
+  findActiveByGuestId,
   update,
   updateByCallUuid,
   createEvent

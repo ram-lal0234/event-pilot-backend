@@ -31,7 +31,9 @@ const envSchema = Joi.object({
   VOICE_DEFAULT_CALL_MODE: Joi.string().valid('ai', 'ivr', '').allow('', null),
   VOICE_AI_WEBHOOK_SECRET: Joi.string().allow('', null),
   VOICE_TRANSPORT_ENABLED: Joi.string().valid('true', 'false', '1', '0', '').allow('', null),
-  VOICE_HOTEL_ENABLED: Joi.string().valid('true', 'false', '1', '0', '').allow('', null)
+  VOICE_HOTEL_ENABLED: Joi.string().valid('true', 'false', '1', '0', '').allow('', null),
+  PROCESSOR_LAMBDA_ARN: Joi.string().allow('', null),
+  CALLBACK_SCHEDULER_ROLE_ARN: Joi.string().allow('', null)
 }).unknown(true);
 
 const { value, error } = envSchema.validate(process.env, { abortEarly: false });
@@ -84,5 +86,9 @@ module.exports = {
   voiceDefaultCallMode: value.VOICE_DEFAULT_CALL_MODE || undefined,
   voiceAiWebhookSecret: value.VOICE_AI_WEBHOOK_SECRET || undefined,
   voiceTransportEnabled: value.VOICE_TRANSPORT_ENABLED || undefined,
-  voiceHotelEnabled: value.VOICE_HOTEL_ENABLED || undefined
+  voiceHotelEnabled: value.VOICE_HOTEL_ENABLED || undefined,
+  callbackScheduler: {
+    processorLambdaArn: value.PROCESSOR_LAMBDA_ARN || undefined,
+    roleArn: value.CALLBACK_SCHEDULER_ROLE_ARN || undefined
+  }
 };
