@@ -8,7 +8,8 @@ const logger = require('../utils/logger');
 const replaceStaleClientConnections = async ({
   accountId,
   clientId,
-  keepConnectionId
+  keepConnectionId,
+  managementEndpoint
 }) => {
   if (!accountId || !clientId) {
     return { removed: 0 };
@@ -27,7 +28,7 @@ const replaceStaleClientConnections = async ({
         type: 'replaced',
         reason: 'new_session_same_client',
         ts: Date.now()
-      });
+      }, { endpoint: managementEndpoint });
       await realtimeConnectionRepository.deleteConnection(row.connectionId);
     })
   );

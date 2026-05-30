@@ -1,8 +1,11 @@
-const { verifyRealtimeToken } = require('../utils/realtime-auth');
-const { normalizeClientId } = require('../utils/realtime-client-id');
-const realtimeConnectionRepository = require('../repositories/realtime-connection.repository');
-const { replaceStaleClientConnections } = require('../services/realtime-connection-lifecycle.service');
-const logger = require('../utils/logger');
+const fromShared = require('./shared');
+
+const { verifyRealtimeToken } = fromShared('utils/realtime-auth');
+const { normalizeClientId } = fromShared('utils/realtime-client-id');
+const realtimeConnectionRepository = fromShared('repositories/realtime-connection.repository');
+const { replaceStaleClientConnections } = fromShared('services/realtime-connection-lifecycle.service');
+const realtimePush = fromShared('services/realtime-push.service');
+const logger = fromShared('utils/logger');
 
 const parseBody = (event) => {
   if (!event?.body) {
@@ -14,6 +17,16 @@ const parseBody = (event) => {
   } catch {
     return {};
   }
+};
+
+const buildManagementEndpoint = (event) => {
+  const { domainName, stage } = event.requestContext || {};
+
+  if (!domainName || !stage) {
+    return undefined;
+  }
+
+  return `https://${domainName}/${stage}`;
 };
 
 const connect = async (event) => {
@@ -43,7 +56,8 @@ const connect = async (event) => {
     await replaceStaleClientConnections({
       accountId: auth.accountId,
       clientId,
-      keepConnectionId: connectionId
+      keepConnectionId: connectionId,
+      managementEndpoint: buildManagementEndpoint(event)
     });
 
     await realtimeConnectionRepository.putConnection({
@@ -89,10 +103,12 @@ const defaultHandler = async (event) => {
       await realtimeConnectionRepository.touchConnection(connectionId).catch(() => {});
     }
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ type: 'pong', ts: Date.now() })
-    };
+    await realtimePush.postToConnection(connectionId, {
+      type: 'pong',
+      ts: Date.now()
+    }, { endpoint: buildManagementEndpoint(event) });
+
+    return { statusCode: 200, body: 'OK' };
   }
 
   if (action === 'subscribe' && body.eventId) {
@@ -100,14 +116,13 @@ const defaultHandler = async (event) => {
       await realtimeConnectionRepository.updateEventSubscription(connectionId, body.eventId);
     }
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        type: 'subscribed',
-        eventId: body.eventId,
-        ts: Date.now()
-      })
-    };
+    await realtimePush.postToConnection(connectionId, {
+      type: 'subscribed',
+      eventId: body.eventId,
+      ts: Date.now()
+    }, { endpoint: buildManagementEndpoint(event) });
+
+    return { statusCode: 200, body: 'OK' };
   }
 
   return {
