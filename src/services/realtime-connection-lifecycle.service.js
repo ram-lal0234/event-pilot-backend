@@ -24,11 +24,19 @@ const replaceStaleClientConnections = async ({
 
   await Promise.allSettled(
     targets.map(async (row) => {
-      await realtimePush.postToConnection(row.connectionId, {
+      const push = await realtimePush.postToConnection(row.connectionId, {
         type: 'replaced',
         reason: 'new_session_same_client',
         ts: Date.now()
       }, { endpoint: managementEndpoint });
+
+      if (!push.ok && push.reason !== 'GONE') {
+        logger.warn('Failed to notify replaced realtime connection', {
+          connectionId: row.connectionId,
+          reason: push.reason
+        });
+      }
+
       await realtimeConnectionRepository.deleteConnection(row.connectionId);
     })
   );

@@ -5,6 +5,7 @@ const AppError = require('../utils/AppError');
 const sanitizeInvite = (record) => ({
   code: record.code,
   expiresAt: record.expiresAt,
+  hasSubmitted: Boolean(record.usedAt || record.guest.ivrRespondedAt),
   guest: {
     id: record.guest.id,
     name: record.guest.name,
@@ -12,7 +13,10 @@ const sanitizeInvite = (record) => ({
     email: record.guest.email,
     rsvpStatus: record.guest.rsvpStatus,
     groupSize: record.guest.groupSize,
-    pickupLocation: record.guest.pickupLocation
+    pickupLocation: record.guest.pickupLocation,
+    needsCab: record.guest.needsCab,
+    needsHotel: record.guest.needsHotel,
+    guestNotes: record.guest.guestNotes
   },
   event: record.guest.event
 });
