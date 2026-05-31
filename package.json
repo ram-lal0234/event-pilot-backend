@@ -9,7 +9,11 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "test": "node --test tests/**/*.test.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run src/tests/unit",
+    "test:integration": "vitest run src/tests/integration",
     "test:voice-rsvp-e2e": "node scripts/verify-voice-rsvp-e2e.js"
   },
   "keywords": [
@@ -43,7 +47,10 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.9",
     "nodemon": "^3.1.7",
-    "prisma": "^5.22.0"
+    "prisma": "^5.22.0",
+    "supertest": "^7.2.2",
+    "vitest": "^2.1.9"
   }
 }
