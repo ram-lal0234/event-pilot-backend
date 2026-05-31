@@ -3,7 +3,12 @@ const prisma = require('../config/db');
 const DEFAULTS = {
   voiceAiEnabled: true,
   ivrEnabled: true,
-  qrEnabled: true
+  qrEnabled: true,
+  outreachEnabled: false,
+  outreachAutoStart: false,
+  outreachVoiceDelayHours: 24,
+  outreachAutoCallMode: 'ai',
+  outreachReminderEnabled: true
 };
 
 const findByEventId = (eventId) => prisma.eventSetting.findUnique({

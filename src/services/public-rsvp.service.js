@@ -1,5 +1,6 @@
 const guestInviteRepository = require('../repositories/guest-invite.repository');
 const guestRepository = require('../repositories/guest.repository');
+const outreachService = require('./outreach.service');
 const AppError = require('../utils/AppError');
 
 const sanitizeInvite = (record) => ({
@@ -50,6 +51,10 @@ const submit = async ({ code, payload }) => {
   });
 
   await guestInviteRepository.markUsed(invite.id);
+
+  if (payload.rsvpStatus !== 'PENDING') {
+    await outreachService.completeOutreach(invite.guest.id, 'rsvp_via_form');
+  }
 
   return {
     guest: {

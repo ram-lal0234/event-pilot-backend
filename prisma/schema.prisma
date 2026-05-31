@@ -35,6 +35,18 @@ enum FollowUpStatus {
   COMPLETED
 }
 
+enum OutreachStatus {
+  IDLE
+  WHATSAPP_INITIAL_SENT
+  AWAITING_RSVP
+  VOICE_SCHEDULED
+  VOICE_ATTEMPTED
+  WHATSAPP_REMINDER_SENT
+  COMPLETE
+  PAUSED
+  NEEDS_PLANNER
+}
+
 enum CheckinMethod {
   QR
   MANUAL
@@ -177,13 +189,20 @@ model Event {
 }
 
 model EventSetting {
-  id             String   @id @default(uuid()) @db.Uuid
-  eventId        String   @unique @map("event_id") @db.Uuid
-  voiceAiEnabled Boolean  @default(true) @map("voice_ai_enabled")
-  ivrEnabled     Boolean  @default(true) @map("ivr_enabled")
-  qrEnabled      Boolean  @default(true) @map("qr_enabled")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id                        String   @id @default(uuid()) @db.Uuid
+  eventId                   String   @unique @map("event_id") @db.Uuid
+  voiceAiEnabled            Boolean  @default(true) @map("voice_ai_enabled")
+  ivrEnabled                Boolean  @default(true) @map("ivr_enabled")
+  qrEnabled                 Boolean  @default(true) @map("qr_enabled")
+  outreachEnabled           Boolean  @default(false) @map("outreach_enabled")
+  outreachAutoStart         Boolean  @default(false) @map("outreach_auto_start")
+  outreachVoiceDelayHours   Int      @default(24) @map("outreach_voice_delay_hours")
+  outreachAutoCallMode      String   @default("ai") @map("outreach_auto_call_mode")
+  outreachReminderEnabled   Boolean  @default(true) @map("outreach_reminder_enabled")
+  outreachMessageTemplate   String?  @map("outreach_message_template")
+  outreachReminderTemplate  String?  @map("outreach_reminder_template")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
@@ -208,6 +227,12 @@ model Guest {
   callbackAt     DateTime?     @map("callback_at")
   callbackTriggered Boolean    @default(false) @map("callback_triggered")
   lastContactedAt DateTime?    @map("last_contacted_at")
+  outreachStatus OutreachStatus @default(IDLE) @map("outreach_status")
+  whatsappInitialSentAt DateTime? @map("whatsapp_initial_sent_at")
+  voiceAutoScheduledAt DateTime? @map("voice_auto_scheduled_at")
+  voiceAutoTriggeredAt DateTime? @map("voice_auto_triggered_at")
+  whatsappReminderSentAt DateTime? @map("whatsapp_reminder_sent_at")
+  outreachPausedAt DateTime? @map("outreach_paused_at")
   assignedTo     String?       @map("assigned_to")
   needsCab       Boolean?      @map("needs_cab")
   needsHotel     Boolean?      @map("needs_hotel")
@@ -224,11 +249,13 @@ model Guest {
   roomAssignments RoomAssignment[]
   checkins        Checkin[]
   invites         GuestInvite[]
+  outreachLogs    OutreachLog[]
 
   @@unique([eventId, phone])
   @@index([eventId])
   @@index([eventId, rsvpStatus])
   @@index([eventId, followUpStatus])
+  @@index([eventId, outreachStatus])
   @@index([eventId, needsCab])
   @@index([eventId, needsHotel])
   @@map("guests")
@@ -366,6 +393,23 @@ model Room {
 
   @@unique([hotelId, roomNumber])
   @@map("rooms")
+}
+
+model OutreachLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  eventId   String   @map("event_id") @db.Uuid
+  guestId   String   @map("guest_id") @db.Uuid
+  step      String
+  status    String
+  message   String?
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  guest Guest @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([guestId])
+  @@map("outreach_logs")
 }
 
 model GuestInvite {
