@@ -1,9 +1,6 @@
-const env = require('../config/env');
+const { buildPublicAppPath } = require('./app-url.util');
 
-const buildPublicRsvpUrl = (code) => {
-  const base = env.publicRsvpBaseUrl || 'http://localhost:3000';
-  return `${String(base).replace(/\/$/, '')}/rsvp/${code}`;
-};
+const buildPublicRsvpUrl = (code) => buildPublicAppPath('/rsvp/', code);
 
 module.exports = {
   buildPublicRsvpUrl

@@ -23,6 +23,8 @@ COMMAND="${1:-deploy}"
 case "$COMMAND" in
   deploy)
     run_prisma_migrations
+    echo "==> Prisma: regenerate client (enum/schema changes)"
+    npx prisma generate
     ./scripts/prepare-layers.sh
     npx serverless@3 deploy --stage dev --region ap-south-1 --aws-profile event-pilot
     ;;

@@ -1,9 +1,6 @@
-const env = require('../config/env');
+const { buildPublicAppPath } = require('./app-url.util');
 
-const buildJoinUrl = (inviteCode) => {
-  const base = String(env.publicAppUrl || 'http://localhost:3000').replace(/\/$/, '');
-  return `${base}/join/${inviteCode}`;
-};
+const buildJoinUrl = (inviteCode) => buildPublicAppPath('/join/', inviteCode);
 
 module.exports = {
   buildJoinUrl

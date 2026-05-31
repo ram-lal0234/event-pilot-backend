@@ -62,6 +62,10 @@ if (value.QUEUE_PROVIDER === 'sqs' && (!value.CALL_QUEUE_URL || !value.EVENT_QUE
   throw new Error('Invalid environment configuration: "CALL_QUEUE_URL", "EVENT_QUEUE_URL", "AUDIT_QUEUE_URL", and "NOTIFICATION_QUEUE_URL" are required when QUEUE_PROVIDER is "sqs"');
 }
 
+if (value.NODE_ENV === 'production' && value.QUEUE_PROVIDER === 'sqs' && !value.PUBLIC_APP_URL && !value.PUBLIC_RSVP_BASE_URL) {
+  throw new Error('Invalid environment configuration: "PUBLIC_APP_URL" or "PUBLIC_RSVP_BASE_URL" is required in production for guest/team invite links');
+}
+
 module.exports = {
   nodeEnv: value.NODE_ENV,
   port: value.PORT,
