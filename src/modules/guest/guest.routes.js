@@ -9,6 +9,10 @@ const {
   guestIdParamSchema,
   guestQuerySchema
 } = require('../../validators/guest.validator');
+const {
+  sendGuestWhatsAppSchema,
+  sendGuestWhatsAppParamSchema
+} = require('../../validators/whatsapp.validator');
 
 const router = express.Router();
 
@@ -42,6 +46,12 @@ router.get(
   '/:id/call-logs',
   validate({ params: guestIdParamSchema }),
   guestController.getGuestCallLogs
+);
+
+router.post(
+  '/:id/whatsapp/send',
+  validate({ params: sendGuestWhatsAppParamSchema, body: sendGuestWhatsAppSchema }),
+  guestController.sendWhatsApp
 );
 
 router

@@ -1,4 +1,5 @@
 const guestService = require('../services/guest.service');
+const guestWhatsAppService = require('../services/guest-whatsapp.service');
 const response = require('../utils/response');
 
 const createGuest = async (req, res, next) => {
@@ -76,6 +77,15 @@ const uploadCsv = async (req, res, next) => {
   }
 };
 
+const sendWhatsApp = async (req, res, next) => {
+  try {
+    const result = await guestWhatsAppService.sendGuestWhatsApp(req.params.id, req.user, req.body);
+    response.success(res, result, result.message || 'WhatsApp message sent');
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createGuest,
   listGuests,
@@ -84,5 +94,6 @@ module.exports = {
   getGuestRsvpLink,
   getGuestCallLogs,
   deleteGuest,
-  uploadCsv
+  uploadCsv,
+  sendWhatsApp
 };

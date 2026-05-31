@@ -11,7 +11,6 @@ const auditService = require('./audit.service');
 const { publishGuestEventAsync } = require('./realtime-events');
 const accessService = require('./access.service');
 const AppError = require('../utils/AppError');
-const env = require('../config/env');
 const logger = require('../utils/logger');
 const { buildPublicRsvpUrl } = require('../utils/public-rsvp.util');
 const { buildInitialMessage, buildReminderMessage } = require('../utils/outreach-message.util');
@@ -329,8 +328,6 @@ const getOutreachSummary = async (eventId, user) => {
     voiceDelayHours: setting?.outreachVoiceDelayHours ?? 24,
     autoCallMode: setting?.outreachAutoCallMode ?? 'ai',
     reminderEnabled: setting?.outreachReminderEnabled !== false,
-    whatsappSenderUrl: notificationDelivery.resolveWhatsAppUrl(),
-    whatsappSendTimeoutMs: env.whatsappSendTimeoutMs,
     counts: {
       idle: byStatus.IDLE || 0,
       awaiting: (byStatus.WHATSAPP_INITIAL_SENT || 0)
