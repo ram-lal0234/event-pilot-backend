@@ -46,6 +46,47 @@ describe('access.service', () => {
     });
   });
 
+  describe('assertCanPerformCheckin', () => {
+    it('allows HOTEL role only at HOTEL location', async () => {
+      const hotelMember = { ...staffMemberFixture, role: 'HOTEL' };
+      prismaMock.accountMember.findFirst.mockResolvedValue(hotelMember);
+      prismaMock.event.findUnique.mockResolvedValue(eventFixture);
+      prismaMock.eventAccess.findUnique.mockResolvedValue({ accessLevel: 'FULL' });
+
+      await expect(
+        accessService.assertCanPerformCheckin(hotelMember.userId, eventFixture.id, 'EVENT_GATE')
+      ).rejects.toMatchObject({ code: 'CHECKIN_LOCATION_DENIED' });
+
+      await expect(
+        accessService.assertCanPerformCheckin(hotelMember.userId, eventFixture.id, 'HOTEL')
+      ).resolves.toBeDefined();
+    });
+
+    it('blocks DRIVER from check-in', async () => {
+      const driverMember = { ...staffMemberFixture, role: 'DRIVER' };
+      prismaMock.accountMember.findFirst.mockResolvedValue(driverMember);
+      prismaMock.event.findUnique.mockResolvedValue(eventFixture);
+      prismaMock.eventAccess.findUnique.mockResolvedValue({ accessLevel: 'FULL' });
+
+      await expect(
+        accessService.assertCanPerformCheckin(driverMember.userId, eventFixture.id, 'HOTEL')
+      ).rejects.toMatchObject({ code: 'CHECKIN_NOT_ALLOWED' });
+    });
+  });
+
+  describe('assertPlannerEventAccess', () => {
+    it('blocks DRIVER from planner mutations', async () => {
+      const driverMember = { ...staffMemberFixture, role: 'DRIVER' };
+      prismaMock.accountMember.findFirst.mockResolvedValue(driverMember);
+      prismaMock.event.findUnique.mockResolvedValue(eventFixture);
+      prismaMock.eventAccess.findUnique.mockResolvedValue({ accessLevel: 'FULL' });
+
+      await expect(
+        accessService.assertPlannerEventAccess(driverMember.userId, eventFixture.id)
+      ).rejects.toMatchObject({ code: 'PLANNER_ROLE_REQUIRED' });
+    });
+  });
+
   describe('assertCanTriggerVoice', () => {
     it('blocks STAFF even with FULL event access', async () => {
       prismaMock.accountMember.findFirst.mockResolvedValue(staffMemberFixture);

@@ -58,8 +58,19 @@ const inviteMember = async (req, res, next) => {
 
 const revokeMember = async (req, res, next) => {
   try {
-    const result = await teamService.revokeMember(req.user.id, req.params.id);
-    response.success(res, result, 'Member revoked');
+    const result = await teamService.suspendMember(req.user.id, req.params.id);
+    response.success(res, result, 'Member suspended');
+  } catch (error) {
+    next(error);
+  }
+};
+
+const suspendMember = revokeMember;
+
+const reactivateMember = async (req, res, next) => {
+  try {
+    const member = await teamService.reactivateMember(req.user.id, req.params.id);
+    response.success(res, member, 'Member reactivated');
   } catch (error) {
     next(error);
   }
@@ -91,6 +102,8 @@ module.exports = {
   listMembers,
   inviteMember,
   revokeMember,
+  suspendMember,
+  reactivateMember,
   updateMemberRole,
   updateMemberEvents
 };

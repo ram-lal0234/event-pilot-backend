@@ -30,11 +30,28 @@ const parseBool = (value, fallback) => {
   return normalized === 'true' || normalized === '1' || normalized === 'yes';
 };
 
+const isIvrConfigured = () => Boolean(
+  env.plivo.ivrAnswerUrl
+  || env.plivo.answerUrl
+  || env.publicApiUrl
+);
+
+const VOICE_USER_MESSAGES = {
+  AI_VOICE_NOT_CONFIGURED: 'Assistant calls are not set up yet. Please contact your administrator.',
+  IVR_VOICE_NOT_CONFIGURED: 'Keypad calls are not set up yet. Please contact your administrator.',
+  VOICE_AI_CALLS_DISABLED: 'Assistant calls are turned off for this event.',
+  IVR_CALLS_DISABLED: 'Keypad calls are turned off for this event.',
+  VOICE_CALL_NOT_ALLOWED_FOR_RSVP_STATUS:
+    'This guest has already responded. You can only call guests who have not replied yet.',
+  CALL_IN_PROGRESS:
+    'We are already calling this guest. Please wait until the current call finishes.'
+};
+
 const assertCallModeConfigured = (callMode) => {
   if (callMode === 'ai') {
     if (!env.plivo.aiAnswerUrl) {
       throw new AppError(
-        'AI voice calls are not configured. Set PLIVO_AI_ANSWER_URL to your Plivo Agent Flow invoke URL.',
+        VOICE_USER_MESSAGES.AI_VOICE_NOT_CONFIGURED,
         503,
         'AI_VOICE_NOT_CONFIGURED'
       );
@@ -43,9 +60,9 @@ const assertCallModeConfigured = (callMode) => {
     return;
   }
 
-  if (!env.plivo.ivrAnswerUrl && !env.plivo.answerUrl) {
+  if (!isIvrConfigured()) {
     throw new AppError(
-      'IVR calls are not configured. Set PLIVO_IVR_ANSWER_URL in the environment.',
+      VOICE_USER_MESSAGES.IVR_VOICE_NOT_CONFIGURED,
       503,
       'IVR_VOICE_NOT_CONFIGURED'
     );
@@ -72,11 +89,11 @@ const assertVoiceCallEnabledForMode = (event, callMode) => {
   if (!setting) return;
 
   if (callMode === 'ai' && setting.voiceAiEnabled === false) {
-    throw new AppError('AI voice calls are disabled for this event.', 409, 'VOICE_AI_CALLS_DISABLED');
+    throw new AppError(VOICE_USER_MESSAGES.VOICE_AI_CALLS_DISABLED, 409, 'VOICE_AI_CALLS_DISABLED');
   }
 
   if (callMode === 'ivr' && setting.ivrEnabled === false) {
-    throw new AppError('IVR calls are disabled for this event.', 409, 'IVR_CALLS_DISABLED');
+    throw new AppError(VOICE_USER_MESSAGES.IVR_CALLS_DISABLED, 409, 'IVR_CALLS_DISABLED');
   }
 };
 
@@ -207,7 +224,7 @@ const triggerOutboundCall = async (guestId, user, { callMode: callModeOverride }
 
   if (guest.rsvpStatus !== 'PENDING') {
     throw new AppError(
-      'Voice calls can only be triggered for guests with pending RSVP.',
+      VOICE_USER_MESSAGES.VOICE_CALL_NOT_ALLOWED_FOR_RSVP_STATUS,
       409,
       'VOICE_CALL_NOT_ALLOWED_FOR_RSVP_STATUS'
     );
@@ -217,7 +234,7 @@ const triggerOutboundCall = async (guestId, user, { callMode: callModeOverride }
 
   if (activeCall) {
     throw new AppError(
-      'A call is already queued or in progress for this guest.',
+      VOICE_USER_MESSAGES.CALL_IN_PROGRESS,
       409,
       'CALL_IN_PROGRESS'
     );
@@ -247,7 +264,7 @@ const triggerScheduledOutboundCall = async (guestId, user, { callMode: callModeO
 
   if (guest.rsvpStatus !== 'PENDING') {
     throw new AppError(
-      'Voice calls can only be triggered for guests with pending RSVP.',
+      VOICE_USER_MESSAGES.VOICE_CALL_NOT_ALLOWED_FOR_RSVP_STATUS,
       409,
       'VOICE_CALL_NOT_ALLOWED_FOR_RSVP_STATUS'
     );
@@ -257,7 +274,7 @@ const triggerScheduledOutboundCall = async (guestId, user, { callMode: callModeO
 
   if (activeCall) {
     throw new AppError(
-      'A call is already queued or in progress for this guest.',
+      VOICE_USER_MESSAGES.CALL_IN_PROGRESS,
       409,
       'CALL_IN_PROGRESS'
     );

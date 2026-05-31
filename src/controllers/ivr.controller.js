@@ -4,8 +4,7 @@ const response = require('../utils/response');
 const triggerCall = async (req, res, next) => {
   try {
     const result = await guestService.triggerIvr(req.body.guestId, req.user, req.body.callMode);
-    const label = result.callMode === 'ai' ? 'AI voice call' : 'IVR call';
-    response.success(res, result, `${label} queued`);
+    response.success(res, result, 'We are calling this guest now');
   } catch (error) {
     next(error);
   }
@@ -18,11 +17,13 @@ const triggerBulkCall = async (req, res, next) => {
       req.user,
       req.body.callMode
     );
-    const label = result.callMode === 'ai' ? 'AI voice' : 'IVR';
+    const callLabel = result.callMode === 'ai' ? 'assistant' : 'keypad';
     response.success(
       res,
       result,
-      `${label} campaign queued ${result.queued} call(s)${result.skipped ? `, ${result.skipped} skipped` : ''}`
+      result.queued
+        ? `Started ${result.queued} ${callLabel} call${result.queued === 1 ? '' : 's'}`
+        : 'No calls were started'
     );
   } catch (error) {
     next(error);

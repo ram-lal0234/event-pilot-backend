@@ -23,6 +23,8 @@ router.patch('/me', validate({ body: updateAccountSchema }), accountController.u
 router.get('/members', accountController.listMembers);
 router.post('/members/invite', validate({ body: inviteMemberSchema }), accountController.inviteMember);
 router.post('/members/:id/revoke', validate({ params: memberIdParamSchema }), accountController.revokeMember);
+router.post('/members/:id/suspend', validate({ params: memberIdParamSchema }), accountController.suspendMember);
+router.post('/members/:id/reactivate', validate({ params: memberIdParamSchema }), accountController.reactivateMember);
 router.patch('/members/:id', validate({ params: memberIdParamSchema, body: updateMemberRoleSchema }), accountController.updateMemberRole);
 router.put('/members/:id/events', validate({ params: memberIdParamSchema, body: updateMemberEventsSchema }), accountController.updateMemberEvents);
 

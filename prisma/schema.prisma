@@ -66,6 +66,8 @@ enum AccountRole {
   OWNER
   ADMIN
   STAFF
+  DRIVER
+  HOTEL
 }
 
 enum AccessLevel {

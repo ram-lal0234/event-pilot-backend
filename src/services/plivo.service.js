@@ -75,8 +75,10 @@ const assertConfigured = (callMode = 'ivr') => {
     return;
   }
 
-  if (!env.plivo.ivrAnswerUrl && !env.plivo.answerUrl) {
-    throw new Error('Plivo IVR answer URL is not configured. Set PLIVO_IVR_ANSWER_URL or PLIVO_ANSWER_URL.');
+  if (!env.plivo.ivrAnswerUrl && !env.plivo.answerUrl && !env.publicApiUrl) {
+    throw new Error(
+      'Plivo IVR answer URL is not configured. Set PLIVO_IVR_ANSWER_URL, PLIVO_ANSWER_URL, or PUBLIC_API_URL.'
+    );
   }
 };
 

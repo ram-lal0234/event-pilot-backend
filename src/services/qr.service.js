@@ -13,7 +13,7 @@ const scan = async ({ qrCode, method, locationType }, user) => {
     throw new AppError('Invalid QR code', 404, 'INVALID_QR');
   }
 
-  await accessService.assertEventAccess(user.id, guest.eventId, { level: 'FULL' });
+  await accessService.assertCanPerformCheckin(user.id, guest.eventId, locationType);
 
   const event = await prisma.event.findUnique({
     where: { id: guest.eventId },
@@ -67,7 +67,7 @@ const undo = async ({ qrCode, locationType }, user) => {
     throw new AppError('Invalid QR code', 404, 'INVALID_QR');
   }
 
-  await accessService.assertEventAccess(user.id, guest.eventId, { level: 'FULL' });
+  await accessService.assertCanPerformCheckin(user.id, guest.eventId, locationType);
 
   if (locationType) {
     const existing = await checkinRepository.findByGuestAndLocation(guest.id, locationType);

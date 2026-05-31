@@ -1,10 +1,63 @@
 const guestRepository = require('../repositories/guest.repository');
 const ivrRepository = require('../repositories/ivr.repository');
 const callRepository = require('../repositories/call.repository');
-const { publishCallEventAsync } = require('./realtime-events');
 const auditService = require('./audit.service');
+const outreachService = require('./outreach.service');
+const { publishGuestEventAsync, publishCallEventAsync } = require('./realtime-events');
 const { canTransition, isStaleTransition, normalizePlivoStatus } = require('./call-state.service');
 const AppError = require('../utils/AppError');
+
+const linkIvrCall = async ({ guestId, callId, callUuid, callOutcome }) => {
+  let call = null;
+
+  if (callUuid) {
+    call = await callRepository.findByCallUuid(callUuid);
+  }
+
+  if (!call && callId) {
+    call = await callRepository.findById(callId);
+  }
+
+  if (!call) {
+    call = await callRepository.findActiveByGuestId(guestId);
+  }
+
+  if (!call) {
+    return { callLinked: false, reason: 'CALL_NOT_FOUND', callUuid: callUuid || null };
+  }
+
+  const patch = { lastEventAt: new Date() };
+
+  if (callUuid && !call.callUuid) {
+    patch.callUuid = callUuid;
+  }
+
+  if (
+    call.status !== 'COMPLETED'
+    && canTransition(call.status, 'COMPLETED')
+    && !isStaleTransition(call.status, 'COMPLETED')
+  ) {
+    patch.status = 'COMPLETED';
+  }
+
+  const updated = await callRepository.update(call.id, patch);
+
+  if (patch.status === 'COMPLETED') {
+    void publishCallEventAsync(updated.eventId, 'call_completed', {
+      callId: updated.id,
+      guestId: updated.guestId,
+      status: 'COMPLETED',
+      callMode: 'ivr',
+      callOutcome
+    });
+  }
+
+  return {
+    callLinked: true,
+    callId: updated.id,
+    callUuid: updated.callUuid || callUuid || null
+  };
+};
 
 const getPlatformObject = (payload = {}) => payload?.data?.object || payload?.data?.Object || {};
 
@@ -45,7 +98,16 @@ const createIdempotencyKey = (payload = {}) => {
     .join(':');
 };
 
-const handleWebhook = async ({ guestId, callStatus, attempt, callDuration, responseInput, groupSize }) => {
+const handleWebhook = async ({
+  guestId,
+  callId,
+  callUuid,
+  callStatus,
+  attempt,
+  callDuration,
+  responseInput,
+  groupSize
+}) => {
   const guest = await guestRepository.findById(guestId);
 
   if (!guest) {
@@ -53,6 +115,14 @@ const handleWebhook = async ({ guestId, callStatus, attempt, callDuration, respo
   }
 
   const rsvpStatus = responseInput === '1' ? 'CONFIRMED' : 'DECLINED';
+  const callOutcome = rsvpStatus === 'CONFIRMED' ? 'completed' : 'declined';
+  const structuredResponse = JSON.stringify({
+    kind: 'ivr',
+    rsvpStatus,
+    callOutcome,
+    responseInput: String(responseInput),
+    callUuid: callUuid || null
+  });
 
   await ivrRepository.createLog({
     eventId: guest.eventId,
@@ -60,15 +130,41 @@ const handleWebhook = async ({ guestId, callStatus, attempt, callDuration, respo
     callStatus,
     attempt,
     callDuration,
-    responseInput,
+    responseInput: structuredResponse,
     rsvpCaptured: Boolean(responseInput),
     groupSizeCaptured: Boolean(groupSize)
   });
 
+  const now = new Date();
   const updatedGuest = await guestRepository.update(guestId, {
     rsvpStatus,
-    ivrRespondedAt: new Date(),
+    ivrRespondedAt: now,
+    lastContactedAt: now,
     ...(groupSize ? { groupSize } : {})
+  });
+
+  const callLink = await linkIvrCall({
+    guestId,
+    callId: callId || null,
+    callUuid: callUuid || null,
+    callOutcome
+  });
+
+  publishGuestEventAsync(guest.eventId, 'rsvp_updated', updatedGuest, {
+    callOutcome,
+    callMode: 'ivr',
+    call: {
+      callUuid: callUuid || callLink.callUuid || null,
+      status: 'COMPLETED'
+    }
+  });
+  publishGuestEventAsync(guest.eventId, 'call_completed', updatedGuest, {
+    callOutcome,
+    callMode: 'ivr',
+    call: {
+      callUuid: callUuid || callLink.callUuid || null,
+      status: 'COMPLETED'
+    }
   });
 
   await auditService.enqueueAuditLog({
@@ -79,9 +175,17 @@ const handleWebhook = async ({ guestId, callStatus, attempt, callDuration, respo
     metadata: {
       responseInput,
       rsvpStatus,
+      callMode: 'ivr',
+      callId: callId || null,
+      callUuid: callUuid || callLink.callUuid || null,
+      callLink,
       groupSize: groupSize || guest.groupSize
     }
   });
+
+  void outreachService.handleCallOutcomeForOutreach(guestId, callOutcome, {
+    rsvpUpdated: true
+  }).catch(() => {});
 
   return updatedGuest;
 };

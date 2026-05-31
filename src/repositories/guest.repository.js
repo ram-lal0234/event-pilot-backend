@@ -16,15 +16,17 @@ const create = (data) => {
   });
 };
 
+const activeGuestWhere = { deletedAt: null };
+
 const findById = (id) => {
-  return prisma.guest.findUnique({
-    where: { id }
+  return prisma.guest.findFirst({
+    where: { id, ...activeGuestWhere }
   });
 };
 
 const findByIdWithEvent = (id) => {
-  return prisma.guest.findUnique({
-    where: { id },
+  return prisma.guest.findFirst({
+    where: { id, ...activeGuestWhere },
     include: {
       event: {
         select: {
@@ -58,8 +60,8 @@ const findCallLogData = (id) => {
 };
 
 const findByQrCode = (qrCode) => {
-  return prisma.guest.findUnique({
-    where: { qrCode }
+  return prisma.guest.findFirst({
+    where: { qrCode, ...activeGuestWhere }
   });
 };
 
@@ -107,6 +109,7 @@ const buildGuestWhere = ({
 
   return {
     eventId,
+    ...activeGuestWhere,
     ...(rsvpStatuses?.length ? { rsvpStatus: { in: rsvpStatuses } } : {}),
     ...(categories?.length ? { category: { in: categories } } : {}),
     ...(followUpStatuses?.length ? { followUpStatus: { in: followUpStatuses } } : {}),
@@ -178,9 +181,10 @@ const update = (id, data) => {
   });
 };
 
-const remove = (id) => {
-  return prisma.guest.delete({
-    where: { id }
+const softRemove = (id) => {
+  return prisma.guest.update({
+    where: { id },
+    data: { deletedAt: new Date() }
   });
 };
 
@@ -193,5 +197,6 @@ module.exports = {
   findMany,
   findManyPaginated,
   update,
-  remove
+  softRemove,
+  activeGuestWhere
 };
