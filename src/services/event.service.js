@@ -8,7 +8,14 @@ const AppError = require('../utils/AppError');
 const formatEventSetting = (setting) => ({
   voiceAiEnabled: setting?.voiceAiEnabled ?? true,
   ivrEnabled: setting?.ivrEnabled ?? true,
-  qrEnabled: setting?.qrEnabled ?? true
+  qrEnabled: setting?.qrEnabled ?? true,
+  outreachEnabled: setting?.outreachEnabled ?? false,
+  outreachAutoStart: setting?.outreachAutoStart ?? false,
+  outreachVoiceDelayHours: setting?.outreachVoiceDelayHours ?? 24,
+  outreachAutoCallMode: setting?.outreachAutoCallMode === 'ivr' ? 'ivr' : 'ai',
+  outreachReminderEnabled: setting?.outreachReminderEnabled !== false,
+  outreachMessageTemplate: setting?.outreachMessageTemplate || null,
+  outreachReminderTemplate: setting?.outreachReminderTemplate || null
 });
 
 const attachSetting = (event) => ({
@@ -119,6 +126,21 @@ const updateEvent = async (eventId, payload, user) => {
   if (payload.voiceAiEnabled !== undefined) settingPatch.voiceAiEnabled = payload.voiceAiEnabled;
   if (payload.ivrEnabled !== undefined) settingPatch.ivrEnabled = payload.ivrEnabled;
   if (payload.qrEnabled !== undefined) settingPatch.qrEnabled = payload.qrEnabled;
+  if (payload.outreachEnabled !== undefined) settingPatch.outreachEnabled = payload.outreachEnabled;
+  if (payload.outreachAutoStart !== undefined) settingPatch.outreachAutoStart = payload.outreachAutoStart;
+  if (payload.outreachVoiceDelayHours !== undefined) {
+    settingPatch.outreachVoiceDelayHours = Math.min(Math.max(Number(payload.outreachVoiceDelayHours), 1), 48);
+  }
+  if (payload.outreachAutoCallMode !== undefined) settingPatch.outreachAutoCallMode = payload.outreachAutoCallMode;
+  if (payload.outreachReminderEnabled !== undefined) {
+    settingPatch.outreachReminderEnabled = payload.outreachReminderEnabled;
+  }
+  if (payload.outreachMessageTemplate !== undefined) {
+    settingPatch.outreachMessageTemplate = payload.outreachMessageTemplate || null;
+  }
+  if (payload.outreachReminderTemplate !== undefined) {
+    settingPatch.outreachReminderTemplate = payload.outreachReminderTemplate || null;
+  }
 
   if (Object.keys(settingPatch).length) {
     await eventSettingRepository.upsertByEventId(eventId, settingPatch);

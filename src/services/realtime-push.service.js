@@ -30,8 +30,19 @@ const getManagementClient = async () => {
   return managementClient;
 };
 
-const postToConnection = async (connectionId, data) => {
-  const client = await getManagementClient();
+const postToConnection = async (connectionId, data, { endpoint } = {}) => {
+  const resolvedEndpoint = endpoint || await resolveWebsocketManagementEndpoint();
+
+  if (!resolvedEndpoint) {
+    return { ok: false, reason: 'NO_MANAGEMENT_CLIENT' };
+  }
+
+  const client = endpoint
+    ? new ApiGatewayManagementApiClient({
+      endpoint: resolvedEndpoint,
+      region: env.awsRegion
+    })
+    : await getManagementClient();
 
   if (!client) {
     return { ok: false, reason: 'NO_MANAGEMENT_CLIENT' };

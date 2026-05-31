@@ -5,6 +5,7 @@ const callRepository = require('../repositories/call.repository');
 const auditService = require('./audit.service');
 const ivrService = require('./ivr.service');
 const callbackScheduleService = require('./callback-schedule.service');
+const outreachService = require('./outreach.service');
 const { canTransition, isStaleTransition } = require('./call-state.service');
 const { publishGuestEventAsync, publishCallEventAsync } = require('./realtime-events');
 const logger = require('../utils/logger');
@@ -588,6 +589,12 @@ const applyRsvpResult = async (rawBody) => {
       callbackAt: updatedGuest.callbackAt || null,
       callbackSchedule: callbackScheduleResult
     }
+  });
+
+  void outreachService.handleCallOutcomeForOutreach(payload.guestId, callOutcome, {
+    rsvpUpdated: applyGuestUpdate && rsvpStatus !== 'PENDING'
+  }).catch((error) => {
+    logger.error(error, { guestId: payload.guestId, context: 'outreach_call_outcome' });
   });
 
   return {

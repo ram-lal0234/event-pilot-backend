@@ -1,10 +1,12 @@
 const guestInviteRepository = require('../repositories/guest-invite.repository');
 const guestRepository = require('../repositories/guest.repository');
+const outreachService = require('./outreach.service');
 const AppError = require('../utils/AppError');
 
 const sanitizeInvite = (record) => ({
   code: record.code,
   expiresAt: record.expiresAt,
+  hasSubmitted: Boolean(record.usedAt || record.guest.ivrRespondedAt),
   guest: {
     id: record.guest.id,
     name: record.guest.name,
@@ -12,7 +14,10 @@ const sanitizeInvite = (record) => ({
     email: record.guest.email,
     rsvpStatus: record.guest.rsvpStatus,
     groupSize: record.guest.groupSize,
-    pickupLocation: record.guest.pickupLocation
+    pickupLocation: record.guest.pickupLocation,
+    needsCab: record.guest.needsCab,
+    needsHotel: record.guest.needsHotel,
+    guestNotes: record.guest.guestNotes
   },
   event: record.guest.event
 });
@@ -46,6 +51,10 @@ const submit = async ({ code, payload }) => {
   });
 
   await guestInviteRepository.markUsed(invite.id);
+
+  if (payload.rsvpStatus !== 'PENDING') {
+    await outreachService.completeOutreach(invite.guest.id, 'rsvp_via_form');
+  }
 
   return {
     guest: {

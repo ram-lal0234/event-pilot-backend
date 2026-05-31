@@ -16,7 +16,14 @@ const updateEventSchema = Joi.object({
   location: Joi.string().trim().min(2).max(240),
   ivrEnabled: Joi.boolean(),
   voiceAiEnabled: Joi.boolean(),
-  qrEnabled: Joi.boolean()
+  qrEnabled: Joi.boolean(),
+  outreachEnabled: Joi.boolean(),
+  outreachAutoStart: Joi.boolean(),
+  outreachVoiceDelayHours: Joi.number().integer().min(1).max(48),
+  outreachAutoCallMode: Joi.string().valid('ai', 'ivr'),
+  outreachReminderEnabled: Joi.boolean(),
+  outreachMessageTemplate: Joi.string().allow('', null).max(4000),
+  outreachReminderTemplate: Joi.string().allow('', null).max(4000)
 }).min(1);
 
 module.exports = {

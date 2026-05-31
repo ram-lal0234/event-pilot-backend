@@ -4,15 +4,18 @@ const QRCode = require('qrcode');
 const prisma = require('../config/db');
 const guestRepository = require('../repositories/guest.repository');
 const guestInviteRepository = require('../repositories/guest-invite.repository');
+const eventSettingRepository = require('../repositories/event-setting.repository');
 const callbackScheduleService = require('./callback-schedule.service');
 const { publishGuestEventAsync } = require('./realtime-events');
 const accessService = require('./access.service');
 const auditService = require('./audit.service');
 const voiceCallService = require('./voice-call.service');
+const outreachService = require('./outreach.service');
 const AppError = require('../utils/AppError');
 const { normalizePhoneE164, inferDefaultCountryCode } = require('../utils/phone.util');
 const { buildPublicRsvpUrl } = require('../utils/public-rsvp.util');
 const env = require('../config/env');
+const logger = require('../utils/logger');
 
 const normalizeGuestPhone = (phone) => {
   try {
@@ -296,6 +299,10 @@ const createGuest = async (payload, user) => {
   }
 
   publishGuestEventAsync(guest.eventId, 'guest_added', guest);
+
+  void outreachService.maybeAutoStartForGuest(guest.id).catch((error) => {
+    logger.warn('Outreach auto-start failed', { guestId: guest.id, error: error.message });
+  });
 
   await auditService.enqueueAuditLog({
     eventId: guest.eventId,
@@ -590,6 +597,14 @@ const uploadCsv = async ({ eventId, csv }, user) => {
       importedBy: user.id
     }
   });
+
+  const setting = await eventSettingRepository.findByEventId(eventId);
+  if (setting?.outreachEnabled && setting?.outreachAutoStart) {
+    for (const guest of guests) {
+      // eslint-disable-next-line no-await-in-loop
+      await outreachService.maybeAutoStartForGuest(guest.id);
+    }
+  }
 
   return {
     inserted: guests.length,

@@ -38,7 +38,8 @@ const envSchema = Joi.object({
   WS_CONNECTIONS_TABLE_NAME: Joi.string().allow('', null),
   WEBSOCKET_API_ENDPOINT: Joi.string().uri().allow('', null),
   WEBSOCKET_API_STAGE: Joi.string().allow('', null),
-  WEBSOCKET_API_SSM_PARAMETER: Joi.string().allow('', null)
+  WEBSOCKET_API_SSM_PARAMETER: Joi.string().allow('', null),
+  WHATSAPP_SENDER_URL: Joi.string().uri().allow('', null)
 }).unknown(true);
 
 const { value, error } = envSchema.validate(process.env, { abortEarly: false });
@@ -103,5 +104,6 @@ module.exports = {
     apiEndpoint: value.WEBSOCKET_API_ENDPOINT || undefined,
     apiStage: value.WEBSOCKET_API_STAGE || undefined,
     apiSsmParameter: value.WEBSOCKET_API_SSM_PARAMETER || undefined
-  }
+  },
+  whatsappSenderUrl: value.WHATSAPP_SENDER_URL || undefined
 };

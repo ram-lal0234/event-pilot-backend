@@ -199,14 +199,10 @@ functions:
       patterns:
         - '!src/**'
         - 'src/lambda/websocket.js'
-        - 'src/utils/realtime-auth.js'
-        - 'src/utils/realtime-client-id.js'
-        - 'src/config/env.js'
-        - 'src/repositories/realtime-connection.repository.js'
-        - 'src/services/realtime-connection-lifecycle.service.js'
-        - 'src/services/realtime-push.service.js'
+        - 'src/lambda/shared.js'
     layers:
       - !Ref DependenciesLambdaLayer
+      - !Ref SharedCodeLambdaLayer
     events:
       - websocket:
           route: $connect
@@ -217,10 +213,10 @@ functions:
       patterns:
         - '!src/**'
         - 'src/lambda/websocket.js'
-        - 'src/repositories/realtime-connection.repository.js'
-        - 'src/config/env.js'
+        - 'src/lambda/shared.js'
     layers:
       - !Ref DependenciesLambdaLayer
+      - !Ref SharedCodeLambdaLayer
     events:
       - websocket:
           route: $disconnect
@@ -231,11 +227,10 @@ functions:
       patterns:
         - '!src/**'
         - 'src/lambda/websocket.js'
-        - 'src/repositories/realtime-connection.repository.js'
-        - 'src/config/env.js'
-        - 'src/utils/realtime-client-id.js'
+        - 'src/lambda/shared.js'
     layers:
       - !Ref DependenciesLambdaLayer
+      - !Ref SharedCodeLambdaLayer
     events:
       - websocket:
           route: $default

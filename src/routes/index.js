@@ -12,6 +12,8 @@ const voiceRoutes = require('../modules/voice/voice.routes');
 const publicRsvpRoutes = require('../modules/public-rsvp/public-rsvp.routes');
 const accountRoutes = require('../modules/account/account.routes');
 const joinRoutes = require('../modules/join/join.routes');
+const eventOutreachRoutes = require('../modules/outreach/event-outreach.routes');
+const guestOutreachRoutes = require('../modules/outreach/guest-outreach.routes');
 
 const router = express.Router();
 
@@ -26,7 +28,9 @@ router.use('/auth', authRoutes);
 router.use('/account', accountRoutes);
 router.use('/join', joinRoutes);
 router.use('/events', eventRoutes);
+router.use('/events/:id/outreach', eventOutreachRoutes);
 router.use('/guests', guestRoutes);
+router.use('/guests', guestOutreachRoutes);
 router.use('/call', callRoutes);
 router.use('/ivr', ivrRoutes);
 router.use('/cabs', cabRoutes);

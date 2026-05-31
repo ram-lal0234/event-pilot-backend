@@ -16,10 +16,17 @@ const createPrismaClient = () => {
 };
 
 const globalForPrisma = globalThis;
-const prisma = globalForPrisma.prisma || createPrismaClient();
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
+let prisma;
+
+if (process.env.VITEST === 'true' && globalForPrisma.__PRISMA_MOCK__) {
+  prisma = globalForPrisma.__PRISMA_MOCK__;
+} else {
+  prisma = globalForPrisma.prisma || createPrismaClient();
+
+  if (process.env.NODE_ENV !== 'production') {
+    globalForPrisma.prisma = prisma;
+  }
 }
 
 module.exports = prisma;
