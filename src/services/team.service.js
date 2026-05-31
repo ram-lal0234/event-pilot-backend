@@ -5,6 +5,7 @@ const eventAccessRepository = require('../repositories/event-access.repository')
 const eventRepository = require('../repositories/event.repository');
 const accessService = require('./access.service');
 const accountService = require('./account.service');
+const auditService = require('./audit.service');
 const emailService = require('./email.service');
 const authService = require('./auth.service');
 const AppError = require('../utils/AppError');
@@ -123,7 +124,7 @@ const inviteMember = async (userId, payload) => {
   };
 };
 
-const revokeMember = async (userId, memberId) => {
+const suspendMember = async (userId, memberId) => {
   const owner = await accessService.assertAccountOwner(userId);
   const member = await accountMemberRepository.findById(memberId);
 
@@ -132,7 +133,11 @@ const revokeMember = async (userId, memberId) => {
   }
 
   if (member.role === 'OWNER') {
-    throw new AppError('Cannot revoke the account owner', 400, 'INVALID_OPERATION');
+    throw new AppError('Cannot suspend the account owner', 400, 'INVALID_OPERATION');
+  }
+
+  if (member.status === 'REVOKED' && member.revokedAt) {
+    return { id: memberId, status: 'REVOKED' };
   }
 
   await prisma.accountMember.update({
@@ -144,8 +149,77 @@ const revokeMember = async (userId, memberId) => {
     }
   });
 
-  return { id: memberId };
+  await auditService.enqueueAuditLog({
+    userId,
+    action: 'MEMBER_SUSPENDED',
+    entityType: 'AccountMember',
+    entityId: memberId,
+    metadata: {
+      email: member.email,
+      role: member.role,
+      previousStatus: member.status
+    }
+  });
+
+  return { id: memberId, status: 'REVOKED' };
 };
+
+const reactivateMember = async (userId, memberId) => {
+  const owner = await accessService.assertAccountOwner(userId);
+  const member = await accountMemberRepository.findById(memberId);
+
+  if (!member || member.accountId !== owner.accountId) {
+    throw new AppError('Member not found', 404, 'MEMBER_NOT_FOUND');
+  }
+
+  if (member.role === 'OWNER') {
+    throw new AppError('Cannot change owner access this way', 400, 'INVALID_OPERATION');
+  }
+
+  if (member.status !== 'REVOKED' || !member.revokedAt) {
+    throw new AppError('Member is not suspended', 400, 'MEMBER_NOT_SUSPENDED');
+  }
+
+  const linkedUser = await prisma.user.findUnique({
+    where: { email: member.email }
+  });
+
+  if (linkedUser) {
+    const otherMembership = await accountMemberRepository.findActiveByUserId(linkedUser.id);
+    if (otherMembership && otherMembership.id !== member.id) {
+      throw new AppError('This user already belongs to another account', 409, 'USER_ALREADY_HAS_ACCOUNT');
+    }
+  }
+
+  const nextStatus = member.acceptedAt ? 'ACCEPTED' : 'PENDING';
+
+  await prisma.accountMember.update({
+    where: { id: memberId },
+    data: {
+      status: nextStatus,
+      revokedAt: null,
+      userId: nextStatus === 'ACCEPTED' ? linkedUser?.id || null : null
+    }
+  });
+
+  await auditService.enqueueAuditLog({
+    userId,
+    action: 'MEMBER_REACTIVATED',
+    entityType: 'AccountMember',
+    entityId: memberId,
+    metadata: {
+      email: member.email,
+      role: member.role,
+      status: nextStatus
+    }
+  });
+
+  const refreshed = await accountMemberRepository.findById(memberId);
+  return formatMember(refreshed);
+};
+
+/** @deprecated Use suspendMember — kept for existing clients */
+const revokeMember = suspendMember;
 
 const updateMemberRole = async (userId, memberId, { role }) => {
   const owner = await accessService.assertAccountOwner(userId);
@@ -251,6 +325,8 @@ const acceptJoin = async (code, user) => {
 module.exports = {
   listMembers,
   inviteMember,
+  suspendMember,
+  reactivateMember,
   revokeMember,
   updateMemberRole,
   updateMemberEvents,

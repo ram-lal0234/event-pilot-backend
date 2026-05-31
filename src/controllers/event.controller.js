@@ -37,9 +37,39 @@ const updateEvent = async (req, res, next) => {
   }
 };
 
+const listArchivedEvents = async (req, res, next) => {
+  try {
+    const events = await eventService.listArchivedEvents(req.user);
+    response.success(res, events, 'Archived events loaded');
+  } catch (error) {
+    next(error);
+  }
+};
+
+const archiveEvent = async (req, res, next) => {
+  try {
+    const result = await eventService.archiveEvent(req.params.id, req.user);
+    response.success(res, result, 'Event archived');
+  } catch (error) {
+    next(error);
+  }
+};
+
+const restoreEvent = async (req, res, next) => {
+  try {
+    const result = await eventService.restoreEvent(req.params.id, req.user);
+    response.success(res, result, 'Event restored');
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createEvent,
   listEvents,
+  listArchivedEvents,
   getEvent,
-  updateEvent
+  updateEvent,
+  archiveEvent,
+  restoreEvent
 };

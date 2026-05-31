@@ -19,7 +19,7 @@ const inviteMemberSchema = Joi.object({
   email: Joi.string().email().required(),
   name: Joi.string().trim().max(120).allow('', null),
   phone: Joi.string().trim().max(30).allow('', null),
-  role: Joi.string().valid('ADMIN', 'STAFF').required(),
+  role: Joi.string().valid('ADMIN', 'STAFF', 'DRIVER', 'HOTEL').required(),
   eventAssignments: Joi.array().items(
     Joi.object({
       eventId: Joi.string().uuid().required(),
@@ -29,7 +29,7 @@ const inviteMemberSchema = Joi.object({
 });
 
 const updateMemberRoleSchema = Joi.object({
-  role: Joi.string().valid('ADMIN', 'STAFF').required()
+  role: Joi.string().valid('ADMIN', 'STAFF', 'DRIVER', 'HOTEL').required()
 });
 
 const updateMemberEventsSchema = Joi.object({

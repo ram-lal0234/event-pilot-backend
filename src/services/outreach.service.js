@@ -4,12 +4,14 @@ const guestRepository = require('../repositories/guest.repository');
 const guestInviteRepository = require('../repositories/guest-invite.repository');
 const eventSettingRepository = require('../repositories/event-setting.repository');
 const outreachScheduleService = require('./outreach-schedule.service');
-const whatsappSenderService = require('./whatsapp-sender.service');
+const notificationProducer = require('../notifications/notification.producer');
+const notificationDelivery = require('../notifications/notification-delivery.service');
 const voiceCallService = require('./voice-call.service');
 const auditService = require('./audit.service');
 const { publishGuestEventAsync } = require('./realtime-events');
 const accessService = require('./access.service');
 const AppError = require('../utils/AppError');
+const env = require('../config/env');
 const logger = require('../utils/logger');
 const { buildPublicRsvpUrl } = require('../utils/public-rsvp.util');
 const { buildInitialMessage, buildReminderMessage } = require('../utils/outreach-message.util');
@@ -68,17 +70,6 @@ const assertCanRunOutreach = (guest, setting) => {
   return { ok: true };
 };
 
-const resolveCallMode = (setting) => {
-  const mode = setting?.outreachAutoCallMode === 'ivr' ? 'ivr' : 'ai';
-  if (mode === 'ai' && setting?.voiceAiEnabled === false) {
-    return setting?.ivrEnabled ? 'ivr' : null;
-  }
-  if (mode === 'ivr' && setting?.ivrEnabled === false) {
-    return setting?.voiceAiEnabled ? 'ai' : null;
-  }
-  return mode;
-};
-
 const completeOutreach = async (guestId, reason = 'rsvp_captured') => {
   const guest = await guestRepository.findById(guestId);
   if (!guest) {
@@ -113,10 +104,10 @@ const sendInitialWhatsApp = async (guestId, { userId } = {}) => {
   const { guest, setting, invite } = context;
   const gate = assertCanRunOutreach(guest, setting);
   if (!gate.ok) {
-    return { sent: false, reason: gate.reason };
+    return { queued: false, sent: false, reason: gate.reason };
   }
 
-  const recipient = whatsappSenderService.phoneToWhatsAppRecipient(guest.phone);
+  const recipient = notificationDelivery.phoneToWhatsAppRecipient(guest.phone);
   if (!recipient) {
     await logOutreach({
       eventId: guest.eventId,
@@ -125,122 +116,77 @@ const sendInitialWhatsApp = async (guestId, { userId } = {}) => {
       status: 'failed',
       message: 'Invalid phone for WhatsApp'
     });
-    return { sent: false, reason: 'INVALID_PHONE' };
+    return { queued: false, sent: false, reason: 'INVALID_PHONE' };
   }
 
   const rsvpLink = buildPublicRsvpUrl(invite.code);
   const message = buildInitialMessage(guest, guest.event, rsvpLink, setting);
-  const sendResult = await whatsappSenderService.sendWhatsAppMessage({ recipient, message });
 
-  if (!sendResult.success) {
-    await logOutreach({
-      eventId: guest.eventId,
-      guestId,
-      step: 'whatsapp_initial',
-      status: 'failed',
-      message: sendResult.message
-    });
-    return { sent: false, reason: 'WHATSAPP_SEND_FAILED', detail: sendResult.message };
+  try {
+    await notificationProducer.enqueueWhatsApp(
+      { recipient, message },
+      {
+        idempotencyKey: `outreach:initial:${guestId}`,
+        metadata: {
+          outreachStep: 'whatsapp_initial',
+          guestId,
+          eventId: guest.eventId,
+          userId: userId || null
+        }
+      }
+    );
+  } catch (error) {
+    logger.error(error, { guestId, context: 'queue_initial_whatsapp' });
+    return { queued: false, sent: false, reason: 'QUEUE_FAILED', detail: error.message };
   }
 
-  const now = new Date();
-  const delayHours = Math.min(Math.max(setting.outreachVoiceDelayHours || 24, 1), 48);
-  const voiceAt = new Date(now.getTime() + delayHours * 60 * 60 * 1000);
-  const callMode = resolveCallMode(setting);
-
-  let scheduleResult = { scheduled: false };
-  if (callMode) {
-    scheduleResult = await outreachScheduleService.scheduleVoiceFollowUp(guestId, voiceAt, callMode);
-  }
-
-  const updated = await guestRepository.update(guestId, {
-    outreachStatus: scheduleResult.scheduled ? 'VOICE_SCHEDULED' : 'AWAITING_RSVP',
-    whatsappInitialSentAt: now,
-    voiceAutoScheduledAt: scheduleResult.scheduled ? voiceAt : null,
-    lastContactedAt: now,
-    outreachPausedAt: null
-  });
-
-  await logOutreach({
-    eventId: guest.eventId,
-    guestId,
-    step: 'whatsapp_initial',
-    status: 'success',
-    message: sendResult.message,
-    metadata: { voiceAt: voiceAt.toISOString(), callMode, scheduleResult }
-  });
-
-  if (userId) {
-    await auditService.enqueueAuditLog({
-      eventId: guest.eventId,
-      userId,
-      action: 'OUTREACH_WHATSAPP_INITIAL_SENT',
-      entityType: 'Guest',
-      entityId: guestId,
-      metadata: { voiceAt: voiceAt.toISOString() }
-    });
-  }
-
-  publishGuestEventAsync(guest.eventId, 'guest_updated', updated);
-  return { sent: true, guest: updated, voiceScheduledAt: scheduleResult.scheduled ? voiceAt : null };
+  return { queued: true, sent: false, guestId };
 };
 
 const sendReminderWhatsApp = async (guestId) => {
   const context = await loadGuestContext(guestId);
   if (!context) {
-    return { sent: false, reason: 'GUEST_NOT_FOUND' };
+    return { queued: false, sent: false, reason: 'GUEST_NOT_FOUND' };
   }
 
   const { guest, setting, invite } = context;
 
   if (!setting?.outreachEnabled || !setting?.outreachReminderEnabled) {
-    return { sent: false, reason: 'REMINDER_DISABLED' };
+    return { queued: false, sent: false, reason: 'REMINDER_DISABLED' };
   }
   if (guest.whatsappReminderSentAt) {
-    return { sent: false, reason: 'REMINDER_ALREADY_SENT' };
+    return { queued: false, sent: false, reason: 'REMINDER_ALREADY_SENT' };
   }
   if (guest.rsvpStatus !== 'PENDING') {
-    return { sent: false, reason: 'RSVP_NOT_PENDING' };
+    return { queued: false, sent: false, reason: 'RSVP_NOT_PENDING' };
   }
 
-  const recipient = whatsappSenderService.phoneToWhatsAppRecipient(guest.phone);
+  const recipient = notificationDelivery.phoneToWhatsAppRecipient(guest.phone);
   if (!recipient) {
-    return { sent: false, reason: 'INVALID_PHONE' };
+    return { queued: false, sent: false, reason: 'INVALID_PHONE' };
   }
 
   const rsvpLink = buildPublicRsvpUrl(invite.code);
   const message = buildReminderMessage(guest, guest.event, rsvpLink, setting);
-  const sendResult = await whatsappSenderService.sendWhatsAppMessage({ recipient, message });
 
-  if (!sendResult.success) {
-    await logOutreach({
-      eventId: guest.eventId,
-      guestId,
-      step: 'whatsapp_reminder',
-      status: 'failed',
-      message: sendResult.message
-    });
-    return { sent: false, reason: 'WHATSAPP_SEND_FAILED', detail: sendResult.message };
+  try {
+    await notificationProducer.enqueueWhatsApp(
+      { recipient, message },
+      {
+        idempotencyKey: `outreach:reminder:${guestId}`,
+        metadata: {
+          outreachStep: 'whatsapp_reminder',
+          guestId,
+          eventId: guest.eventId
+        }
+      }
+    );
+  } catch (error) {
+    logger.error(error, { guestId, context: 'queue_reminder_whatsapp' });
+    return { queued: false, sent: false, reason: 'QUEUE_FAILED', detail: error.message };
   }
 
-  const now = new Date();
-  const updated = await guestRepository.update(guestId, {
-    outreachStatus: 'NEEDS_PLANNER',
-    whatsappReminderSentAt: now,
-    lastContactedAt: now,
-    followUpStatus: guest.followUpStatus === 'NONE' ? 'NEEDS_FOLLOW_UP' : guest.followUpStatus
-  });
-
-  await logOutreach({
-    eventId: guest.eventId,
-    guestId,
-    step: 'whatsapp_reminder',
-    status: 'success',
-    message: sendResult.message
-  });
-
-  publishGuestEventAsync(guest.eventId, 'guest_updated', updated);
-  return { sent: true, guest: updated };
+  return { queued: true, sent: false, guestId };
 };
 
 const pauseOutreach = async (guestId, user) => {
@@ -296,8 +242,8 @@ const startOutreachForEvent = async (eventId, user) => {
     results.push({ guestId: id, ...result });
   }
 
-  const sent = results.filter((item) => item.sent).length;
-  const failed = results.length - sent;
+  const queued = results.filter((item) => item.queued).length;
+  const failed = results.length - queued;
 
   await auditService.enqueueAuditLog({
     eventId,
@@ -305,10 +251,10 @@ const startOutreachForEvent = async (eventId, user) => {
     action: 'OUTREACH_BATCH_STARTED',
     entityType: 'Event',
     entityId: eventId,
-    metadata: { total: results.length, sent, failed }
+    metadata: { total: results.length, queued, failed }
   });
 
-  return { total: results.length, sent, failed, results };
+  return { total: results.length, queued, sent: queued, failed, results };
 };
 
 const maybeAutoStartForGuest = async (guestId) => {
@@ -326,7 +272,7 @@ const maybeAutoStartForGuest = async (guestId) => {
   }
 
   const result = await sendInitialWhatsApp(guestId);
-  return { started: result.sent, ...result };
+  return { started: result.queued, ...result };
 };
 
 const handleCallOutcomeForOutreach = async (guestId, callOutcome, { rsvpUpdated } = {}) => {
@@ -383,7 +329,8 @@ const getOutreachSummary = async (eventId, user) => {
     voiceDelayHours: setting?.outreachVoiceDelayHours ?? 24,
     autoCallMode: setting?.outreachAutoCallMode ?? 'ai',
     reminderEnabled: setting?.outreachReminderEnabled !== false,
-    whatsappSenderUrl: whatsappSenderService.resolveSenderUrl(),
+    whatsappSenderUrl: notificationDelivery.resolveWhatsAppUrl(),
+    whatsappSendTimeoutMs: env.whatsappSendTimeoutMs,
     counts: {
       idle: byStatus.IDLE || 0,
       awaiting: (byStatus.WHATSAPP_INITIAL_SENT || 0)

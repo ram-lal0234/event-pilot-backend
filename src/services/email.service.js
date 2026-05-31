@@ -1,5 +1,6 @@
 const env = require('../config/env');
 const logger = require('../utils/logger');
+const notificationProducer = require('../notifications/notification.producer');
 
 const resendEndpoint = 'https://api.resend.com/emails';
 
@@ -48,6 +49,7 @@ const sendOtpEmail = async ({ email, otp }) => {
   }
 
   const message = renderOtpEmail(otp);
+  // OTP stays synchronous for fast login UX — not queued.
   await sendWithResend({
     to: email,
     ...message
@@ -76,6 +78,19 @@ const sendTeamInviteEmail = async ({ email, accountName, inviteUrl, role }) => {
   }
 
   const message = renderTeamInviteEmail({ accountName, inviteUrl, role });
+
+  if (env.queueProvider === 'sqs') {
+    await notificationProducer.enqueueEmail(
+      { to: email, ...message },
+      {
+        idempotencyKey: `team-invite:${email}:${inviteUrl}`,
+        metadata: { type: 'team_invite', accountName, role }
+      }
+    );
+    logger.info('Team invite email queued', { email, accountName });
+    return;
+  }
+
   await sendWithResend({
     to: email,
     ...message

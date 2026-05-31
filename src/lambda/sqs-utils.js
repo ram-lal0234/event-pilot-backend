@@ -4,7 +4,12 @@ const logger = fromShared('utils/logger');
 
 const NON_RETRYABLE_ERROR_CODES = new Set([
   'GUEST_ID_REQUIRED',
-  'RSVP_FIELDS_REQUIRED'
+  'RSVP_FIELDS_REQUIRED',
+  'INVALID_NOTIFICATION_JOB',
+  'INVALID_NOTIFICATION_CHANNEL',
+  'WHATSAPP_SEND_TIMEOUT',
+  'INVALID_RECIPIENT',
+  'INVALID_PAYLOAD'
 ]);
 
 const isNonRetryableError = (error) => {

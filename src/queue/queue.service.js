@@ -5,7 +5,8 @@ const queueMap = {
   ivr: 'call',
   call: 'call',
   event: 'event',
-  audit: 'audit'
+  audit: 'audit',
+  notification: 'notification'
 };
 
 let sqsClient;
@@ -56,6 +57,15 @@ const addSqsJob = async (type, payload, options = {}) => {
 };
 
 const addLocalJob = async (type, payload) => {
+  if (type === 'notification') {
+    const notificationConsumer = require('../services/notification-consumer.service');
+    logger.info('Processing notification job locally', {
+      channel: payload.channel,
+      id: payload.id
+    });
+    return notificationConsumer.processNotificationJob(payload);
+  }
+
   logger.info('Local queue provider selected; job logged only', {
     type,
     payload

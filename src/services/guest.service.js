@@ -8,6 +8,7 @@ const eventSettingRepository = require('../repositories/event-setting.repository
 const callbackScheduleService = require('./callback-schedule.service');
 const { publishGuestEventAsync } = require('./realtime-events');
 const accessService = require('./access.service');
+const { scopeGuestForRole } = require('../utils/guest-field-scope');
 const auditService = require('./audit.service');
 const voiceCallService = require('./voice-call.service');
 const outreachService = require('./outreach.service');
@@ -28,8 +29,13 @@ const normalizeGuestPhone = (phone) => {
 };
 
 const assertEventAccess = async (eventId, user, level = 'FULL') => {
-  await accessService.assertEventAccess(user.id, eventId, { level });
+  return accessService.assertEventAccess(user.id, eventId, { level });
 };
+
+const assertPlannerEventAccess = async (eventId, user, level = 'FULL') => {
+  return accessService.assertPlannerEventAccess(user.id, eventId, { level });
+};
+
 
 const toOptionalNumber = (value) => {
   if (value === undefined || value === null || value === '') {
@@ -275,7 +281,7 @@ const createGuestRecord = async (payload, { tx } = {}) => {
 };
 
 const createGuest = async (payload, user) => {
-  await assertEventAccess(payload.eventId, user);
+  await assertPlannerEventAccess(payload.eventId, user);
 
   let guest;
   let qrImage;
@@ -312,6 +318,7 @@ const createGuest = async (payload, user) => {
     entityId: guest.id,
     metadata: {
       createdBy: user.id,
+      guestName: guest.name,
       category: guest.category,
       groupSize: guest.groupSize
     }
@@ -326,23 +333,29 @@ const createGuest = async (payload, user) => {
 };
 
 const listGuests = async (query, user) => {
-  await assertEventAccess(query.eventId, user, 'READ');
+  const { member } = await assertEventAccess(query.eventId, user, 'READ');
+  const scopedQuery = accessService.applyGuestListScope(query, member.role);
 
-  if (query.page || query.pageSize) {
+  const mapItems = async (items) => {
+    const enriched = await Promise.all(items.map(enrichGuestForList));
+    return enriched.map((guest) => scopeGuestForRole(guest, member.role));
+  };
+
+  if (scopedQuery.page || scopedQuery.pageSize) {
     const result = await guestRepository.findManyPaginated({
-      ...query,
-      page: query.page || 1,
-      pageSize: query.pageSize || 10
+      ...scopedQuery,
+      page: scopedQuery.page || 1,
+      pageSize: scopedQuery.pageSize || 10
     });
 
     return {
       ...result,
-      items: await Promise.all(result.items.map(enrichGuestForList))
+      items: await mapItems(result.items)
     };
   }
 
-  const items = await guestRepository.findMany(query);
-  return Promise.all(items.map(enrichGuestForList));
+  const items = await guestRepository.findMany(scopedQuery);
+  return mapItems(items);
 };
 
 const updateGuest = async (id, payload, user) => {
@@ -352,7 +365,7 @@ const updateGuest = async (id, payload, user) => {
     throw new AppError('Guest not found', 404, 'GUEST_NOT_FOUND');
   }
 
-  await assertEventAccess(guest.eventId, user);
+  await assertPlannerEventAccess(guest.eventId, user);
 
   const updatePayload = { ...payload };
 
@@ -428,7 +441,7 @@ const updateGuestRsvp = async (id, payload, user) => {
     throw new AppError('Guest not found', 404, 'GUEST_NOT_FOUND');
   }
 
-  await assertEventAccess(guest.eventId, user);
+  await assertPlannerEventAccess(guest.eventId, user);
 
   const updatedGuest = await guestRepository.update(id, {
     rsvpStatus: payload.rsvpStatus,
@@ -496,8 +509,9 @@ const deleteGuest = async (id, user) => {
     throw new AppError('Guest not found', 404, 'GUEST_NOT_FOUND');
   }
 
-  await assertEventAccess(guest.eventId, user);
-  await guestRepository.remove(id);
+  await assertPlannerEventAccess(guest.eventId, user);
+  await guestInviteRepository.revokeByGuestId(id);
+  await guestRepository.softRemove(id);
 
   await auditService.enqueueAuditLog({
     eventId: guest.eventId,
@@ -523,7 +537,7 @@ const triggerBulkIvr = async (eventId, user, callMode) => (
 );
 
 const uploadCsv = async ({ eventId, csv }, user) => {
-  await assertEventAccess(eventId, user);
+  await assertPlannerEventAccess(eventId, user);
 
   const records = parse(csv, {
     columns: true,
@@ -560,30 +574,53 @@ const uploadCsv = async ({ eventId, csv }, user) => {
     throw new AppError(message, 400, 'CSV_VALIDATION_FAILED');
   }
 
-  let guests = [];
+  const guests = [];
+  const skipped = [];
 
-  try {
-    guests = await prisma.$transaction(async (tx) => {
-      const created = [];
-
-      for (const row of prepared) {
-        const { guest, qrImage, invite } = await createGuestRecord(row, { tx });
-        created.push(enrichGuest({
-          ...guest,
-          qrImage,
-          inviteCode: invite.code,
-          publicRsvpUrl: buildPublicRsvpUrl(invite.code)
-        }));
-      }
-
-      return created;
+  for (let index = 0; index < prepared.length; index += 1) {
+    const row = prepared[index];
+    // eslint-disable-next-line no-await-in-loop
+    const existing = await prisma.guest.findFirst({
+      where: { eventId, phone: row.phone },
+      select: { id: true, name: true }
     });
-  } catch (error) {
-    if (isUniqueConstraintError(error, ['event_id', 'phone']) || isUniqueConstraintError(error, ['eventId', 'phone'])) {
-      throw new AppError('CSV import failed: duplicate phone number in this event.', 409, 'GUEST_PHONE_EXISTS');
+
+    if (existing) {
+      skipped.push({
+        row: index + 2,
+        phone: row.phone,
+        name: row.name,
+        reason: 'A guest with this phone number already exists for this event.'
+      });
+      continue;
     }
 
-    throw error;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const { guest, qrImage, invite } = await createGuestRecord(row);
+      guests.push(enrichGuest({
+        ...guest,
+        qrImage,
+        inviteCode: invite.code,
+        publicRsvpUrl: buildPublicRsvpUrl(invite.code)
+      }));
+    } catch (error) {
+      if (isUniqueConstraintError(error, ['event_id', 'phone']) || isUniqueConstraintError(error, ['eventId', 'phone'])) {
+        skipped.push({
+          row: index + 2,
+          phone: row.phone,
+          name: row.name,
+          reason: 'A guest with this phone number already exists for this event.'
+        });
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  if (!guests.length && skipped.length) {
+    throw new AppError('No guests were imported. All rows were skipped because the phone number already exists for this event.', 409, 'GUEST_PHONE_EXISTS');
   }
 
   await auditService.enqueueAuditLog({
@@ -594,6 +631,7 @@ const uploadCsv = async ({ eventId, csv }, user) => {
     entityId: eventId,
     metadata: {
       inserted: guests.length,
+      skipped: skipped.length,
       importedBy: user.id
     }
   });
@@ -608,7 +646,8 @@ const uploadCsv = async ({ eventId, csv }, user) => {
 
   return {
     inserted: guests.length,
-    guests
+    guests,
+    skipped
   };
 };
 

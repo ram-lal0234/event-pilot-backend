@@ -39,7 +39,9 @@ const envSchema = Joi.object({
   WEBSOCKET_API_ENDPOINT: Joi.string().uri().allow('', null),
   WEBSOCKET_API_STAGE: Joi.string().allow('', null),
   WEBSOCKET_API_SSM_PARAMETER: Joi.string().allow('', null),
-  WHATSAPP_SENDER_URL: Joi.string().uri().allow('', null)
+  NOTIFICATION_QUEUE_URL: Joi.string().uri().allow('', null),
+  WHATSAPP_SENDER_URL: Joi.string().uri().allow('', null),
+  WHATSAPP_SEND_TIMEOUT_MS: Joi.number().integer().min(1000).max(30000).allow('', null)
 }).unknown(true);
 
 const { value, error } = envSchema.validate(process.env, { abortEarly: false });
@@ -56,8 +58,8 @@ if (value.EMAIL_PROVIDER === 'resend' && (!value.RESEND_API_KEY || !value.EMAIL_
   throw new Error('Invalid environment configuration: "RESEND_API_KEY" and "EMAIL_FROM" are required when EMAIL_PROVIDER is "resend"');
 }
 
-if (value.QUEUE_PROVIDER === 'sqs' && (!value.CALL_QUEUE_URL || !value.EVENT_QUEUE_URL || !value.AUDIT_QUEUE_URL)) {
-  throw new Error('Invalid environment configuration: "CALL_QUEUE_URL", "EVENT_QUEUE_URL", and "AUDIT_QUEUE_URL" are required when QUEUE_PROVIDER is "sqs"');
+if (value.QUEUE_PROVIDER === 'sqs' && (!value.CALL_QUEUE_URL || !value.EVENT_QUEUE_URL || !value.AUDIT_QUEUE_URL || !value.NOTIFICATION_QUEUE_URL)) {
+  throw new Error('Invalid environment configuration: "CALL_QUEUE_URL", "EVENT_QUEUE_URL", "AUDIT_QUEUE_URL", and "NOTIFICATION_QUEUE_URL" are required when QUEUE_PROVIDER is "sqs"');
 }
 
 module.exports = {
@@ -74,7 +76,8 @@ module.exports = {
   queues: {
     call: value.CALL_QUEUE_URL || undefined,
     event: value.EVENT_QUEUE_URL || undefined,
-    audit: value.AUDIT_QUEUE_URL || undefined
+    audit: value.AUDIT_QUEUE_URL || undefined,
+    notification: value.NOTIFICATION_QUEUE_URL || undefined
   },
   auditLogTableName: value.AUDIT_LOG_TABLE_NAME || undefined,
   plivo: {
@@ -105,5 +108,6 @@ module.exports = {
     apiStage: value.WEBSOCKET_API_STAGE || undefined,
     apiSsmParameter: value.WEBSOCKET_API_SSM_PARAMETER || undefined
   },
-  whatsappSenderUrl: value.WHATSAPP_SENDER_URL || undefined
+  whatsappSenderUrl: value.WHATSAPP_SENDER_URL || undefined,
+  whatsappSendTimeoutMs: Number(value.WHATSAPP_SEND_TIMEOUT_MS) || 5000
 };

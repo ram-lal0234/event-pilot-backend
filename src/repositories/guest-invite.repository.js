@@ -4,6 +4,7 @@ const findValidByCode = (code) => prisma.guestInvite.findFirst({
   where: {
     code,
     revokedAt: null,
+    guest: { deletedAt: null },
     OR: [
       { expiresAt: null },
       { expiresAt: { gt: new Date() } }
@@ -37,9 +38,15 @@ const findByGuestId = (guestId) => prisma.guestInvite.findFirst({
   orderBy: { createdAt: 'desc' }
 });
 
+const revokeByGuestId = (guestId) => prisma.guestInvite.updateMany({
+  where: { guestId, revokedAt: null },
+  data: { revokedAt: new Date() }
+});
+
 module.exports = {
   findValidByCode,
   create,
   markUsed,
-  findByGuestId
+  findByGuestId,
+  revokeByGuestId
 };

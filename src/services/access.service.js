@@ -3,6 +3,11 @@ const accountMemberRepository = require('../repositories/account-member.reposito
 const eventAccessRepository = require('../repositories/event-access.repository');
 const eventRepository = require('../repositories/event.repository');
 const AppError = require('../utils/AppError');
+const {
+  isPlannerRole,
+  isFieldRole,
+  assertPlannerRole
+} = require('../utils/role-capabilities');
 
 const getActiveMembership = async (userId) => {
   const member = await accountMemberRepository.findActiveByUserId(userId);
@@ -67,10 +72,47 @@ const assertCanCreateEvent = async (userId) => {
 
 const assertCanTriggerVoice = async (userId, eventId) => {
   const { member, accessLevel } = await assertEventAccess(userId, eventId, { level: 'FULL' });
-  if (member.role === 'STAFF') {
-    throw new AppError('Staff members cannot trigger voice calls', 403, 'VOICE_NOT_ALLOWED');
+  if (!isPlannerRole(member.role) || member.role === 'STAFF') {
+    throw new AppError('Your role cannot trigger voice calls', 403, 'VOICE_NOT_ALLOWED');
   }
   return { member, accessLevel };
+};
+
+const assertPlannerEventAccess = async (userId, eventId, { level = 'FULL' } = {}) => {
+  const context = await assertEventAccess(userId, eventId, { level });
+  assertPlannerRole(context.member.role);
+  return context;
+};
+
+const assertCanPerformCheckin = async (userId, eventId, locationType) => {
+  const { member } = await assertEventAccess(userId, eventId, { level: 'FULL' });
+
+  if (member.role === 'DRIVER') {
+    throw new AppError('Drivers cannot perform check-in', 403, 'CHECKIN_NOT_ALLOWED');
+  }
+
+  if (member.role === 'HOTEL') {
+    if (!locationType || locationType !== 'HOTEL') {
+      throw new AppError('Hotel staff can only check in guests at the hotel desk', 403, 'CHECKIN_LOCATION_DENIED');
+    }
+    return { member };
+  }
+
+  if (isFieldRole(member.role)) {
+    throw new AppError('Your role cannot perform check-in', 403, 'CHECKIN_NOT_ALLOWED');
+  }
+
+  return { member };
+};
+
+const applyGuestListScope = (query, role) => {
+  if (role === 'DRIVER') {
+    return { ...query, needsCab: query.needsCab ?? 'true' };
+  }
+  if (role === 'HOTEL') {
+    return { ...query, needsHotel: query.needsHotel ?? 'true' };
+  }
+  return query;
 };
 
 const listAccessibleEvents = async (userId) => {
@@ -107,5 +149,10 @@ module.exports = {
   assertAccountOwner,
   assertCanCreateEvent,
   assertCanTriggerVoice,
+  assertPlannerEventAccess,
+  assertCanPerformCheckin,
+  applyGuestListScope,
+  isPlannerRole,
+  isFieldRole,
   listAccessibleEvents
 };

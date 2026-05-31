@@ -27,29 +27,38 @@ const attachEventStats = async (events) => {
   if (!events.length) return [];
 
   const eventIds = events.map((event) => event.id);
-  const guestCounts = await prisma.guest.groupBy({
-    by: ['eventId'],
-    where: { eventId: { in: eventIds }, deletedAt: null },
-    _count: { _all: true }
-  });
-  const confirmedCounts = await prisma.guest.groupBy({
-    by: ['eventId'],
-    where: {
-      eventId: { in: eventIds },
-      deletedAt: null,
-      rsvpStatus: 'CONFIRMED'
-    },
-    _count: { _all: true }
-  });
+  const [guestCounts, confirmedCounts, settings] = await Promise.all([
+    prisma.guest.groupBy({
+      by: ['eventId'],
+      where: { eventId: { in: eventIds }, deletedAt: null },
+      _count: { _all: true }
+    }),
+    prisma.guest.groupBy({
+      by: ['eventId'],
+      where: {
+        eventId: { in: eventIds },
+        deletedAt: null,
+        rsvpStatus: 'CONFIRMED'
+      },
+      _count: { _all: true }
+    }),
+    prisma.eventSetting.findMany({
+      where: { eventId: { in: eventIds } }
+    })
+  ]);
 
   const totalByEvent = new Map(guestCounts.map((row) => [row.eventId, row._count._all]));
   const confirmedByEvent = new Map(confirmedCounts.map((row) => [row.eventId, row._count._all]));
+  const settingsByEvent = new Map(settings.map((row) => [row.eventId, row]));
 
-  return events.map((event) => ({
-    ...event,
-    guestCount: totalByEvent.get(event.id) || 0,
-    rsvpConfirmedCount: confirmedByEvent.get(event.id) || 0
-  }));
+  return events.map((event) =>
+    attachSetting({
+      ...event,
+      setting: settingsByEvent.get(event.id),
+      guestCount: totalByEvent.get(event.id) || 0,
+      rsvpConfirmedCount: confirmedByEvent.get(event.id) || 0
+    })
+  );
 };
 
 const createEvent = async (payload, user) => {
@@ -161,9 +170,70 @@ const updateEvent = async (eventId, payload, user) => {
   return getEvent(eventId, user);
 };
 
+const archiveEvent = async (eventId, user) => {
+  const member = await accessService.assertCanCreateEvent(user.id);
+  const event = await eventRepository.findById(eventId);
+
+  if (!event || event.accountId !== member.accountId) {
+    throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND');
+  }
+
+  if (event.deletedAt) {
+    return { id: eventId, archived: true };
+  }
+
+  await eventRepository.softArchive(eventId);
+
+  await auditService.enqueueAuditLog({
+    eventId,
+    userId: user.id,
+    action: 'EVENT_ARCHIVED',
+    entityType: 'Event',
+    entityId: eventId,
+    metadata: { name: event.name }
+  });
+
+  return { id: eventId, archived: true };
+};
+
+const restoreEvent = async (eventId, user) => {
+  const member = await accessService.assertCanCreateEvent(user.id);
+  const event = await eventRepository.findById(eventId);
+
+  if (!event || event.accountId !== member.accountId) {
+    throw new AppError('Event not found', 404, 'EVENT_NOT_FOUND');
+  }
+
+  if (!event.deletedAt) {
+    return { id: eventId, archived: false };
+  }
+
+  await eventRepository.restore(eventId);
+
+  await auditService.enqueueAuditLog({
+    eventId,
+    userId: user.id,
+    action: 'EVENT_RESTORED',
+    entityType: 'Event',
+    entityId: eventId,
+    metadata: { name: event.name }
+  });
+
+  return { id: eventId, archived: false };
+};
+
+const listArchivedEvents = async (user) => {
+  const member = await accessService.assertCanCreateEvent(user.id);
+  const events = await eventRepository.findArchivedByAccountId(member.accountId);
+  return attachEventStats(events);
+};
+
 module.exports = {
   createEvent,
   listEvents,
+  listArchivedEvents,
   getEvent,
-  updateEvent
+  updateEvent,
+  archiveEvent,
+  restoreEvent
 };

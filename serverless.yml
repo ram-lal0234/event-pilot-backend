@@ -56,6 +56,7 @@ provider:
     CALL_QUEUE_URL: !Ref CallQueue
     EVENT_QUEUE_URL: !Ref EventQueue
     AUDIT_QUEUE_URL: !Ref AuditQueue
+    NOTIFICATION_QUEUE_URL: !Ref NotificationQueue
     AUDIT_LOG_TABLE_NAME: !Ref AuditLogTable
     DATABASE_URL: ${env:DATABASE_URL}
     DIRECT_URL: ${env:DIRECT_URL}
@@ -64,6 +65,8 @@ provider:
     EMAIL_PROVIDER: ${env:EMAIL_PROVIDER, 'resend'}
     RESEND_API_KEY: ${env:RESEND_API_KEY, ''}
     EMAIL_FROM: ${env:EMAIL_FROM, ''}
+    WHATSAPP_SENDER_URL: ${env:WHATSAPP_SENDER_URL, ''}
+    WHATSAPP_SEND_TIMEOUT_MS: ${env:WHATSAPP_SEND_TIMEOUT_MS, '5000'}
     PUBLIC_API_URL: ${env:PUBLIC_API_URL, ''}
     PLIVO_AUTH_ID: ${env:PLIVO_AUTH_ID, ''}
     PLIVO_AUTH_TOKEN: ${env:PLIVO_AUTH_TOKEN, ''}
@@ -90,6 +93,7 @@ provider:
             - !GetAtt CallQueue.Arn
             - !GetAtt EventQueue.Arn
             - !GetAtt AuditQueue.Arn
+            - !GetAtt NotificationQueue.Arn
         - Effect: Allow
           Action:
             - sqs:ReceiveMessage
@@ -99,6 +103,7 @@ provider:
             - !GetAtt CallQueue.Arn
             - !GetAtt EventQueue.Arn
             - !GetAtt AuditQueue.Arn
+            - !GetAtt NotificationQueue.Arn
         - Effect: Allow
           Action:
             - dynamodb:PutItem
@@ -247,6 +252,22 @@ functions:
       - !Ref DependenciesLambdaLayer
       - !Ref SharedCodeLambdaLayer
 
+  notificationProcessor:
+    handler: src/lambda/notification-processor.handler
+    timeout: 15
+    package:
+      patterns:
+        - '!src/**'
+        - 'src/lambda/notification-processor.js'
+        - 'src/lambda/shared.js'
+        - 'src/lambda/sqs-utils.js'
+    layers:
+      - !Ref DependenciesLambdaLayer
+      - !Ref SharedCodeLambdaLayer
+    environment:
+      WHATSAPP_SENDER_URL: ${env:WHATSAPP_SENDER_URL, ''}
+      WHATSAPP_SEND_TIMEOUT_MS: ${env:WHATSAPP_SEND_TIMEOUT_MS, '5000'}
+
 resources:
   Resources:
     CallQueueDlq:
@@ -265,6 +286,12 @@ resources:
       Type: AWS::SQS::Queue
       Properties:
         QueueName: ${self:service}-${sls:stage}-audit-dlq
+        MessageRetentionPeriod: 1209600
+
+    NotificationQueueDlq:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-notification-dlq
         MessageRetentionPeriod: 1209600
 
     CallQueue:
@@ -293,6 +320,15 @@ resources:
         RedrivePolicy:
           deadLetterTargetArn: !GetAtt AuditQueueDlq.Arn
           maxReceiveCount: 5
+
+    NotificationQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-notification
+        VisibilityTimeout: 30
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt NotificationQueueDlq.Arn
+          maxReceiveCount: 3
 
     CallbackSchedulerRole:
       Type: AWS::IAM::Role
@@ -432,6 +468,17 @@ resources:
           - ReportBatchItemFailures
         ScalingConfig:
           MaximumConcurrency: ${env:AUDIT_MAX_QUEUE_CONCURRENCY, 2}
+
+    NotificationQueueMapping:
+      Type: AWS::Lambda::EventSourceMapping
+      Properties:
+        EventSourceArn: !GetAtt NotificationQueue.Arn
+        FunctionName: !GetAtt NotificationProcessorLambdaFunction.Arn
+        BatchSize: 1
+        FunctionResponseTypes:
+          - ReportBatchItemFailures
+        ScalingConfig:
+          MaximumConcurrency: ${env:NOTIFICATION_MAX_QUEUE_CONCURRENCY, 2}
 
 outputs:
   WebsocketUrl:

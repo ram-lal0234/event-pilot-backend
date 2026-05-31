@@ -5,7 +5,7 @@ const auditService = require('./audit.service');
 const AppError = require('../utils/AppError');
 
 const createCab = async (payload, user) => {
-  await accessService.assertEventAccess(user.id, payload.eventId, { level: 'FULL' });
+  await accessService.assertPlannerEventAccess(user.id, payload.eventId, { level: 'FULL' });
 
   const cab = await cabRepository.create({
     eventId: payload.eventId,
@@ -54,7 +54,7 @@ const assignGuest = async ({ cabId, guestId }, user) => {
     throw new AppError('Cab or guest not found for the same event', 404, 'CAB_ASSIGNMENT_TARGET_NOT_FOUND');
   }
 
-  await accessService.assertEventAccess(user.id, cab.eventId, { level: 'FULL' });
+  await accessService.assertPlannerEventAccess(user.id, cab.eventId, { level: 'FULL' });
 
   if (guest.rsvpStatus !== 'CONFIRMED') {
     throw new AppError('Only confirmed guests can be assigned to a cab', 409, 'CAB_ASSIGNMENT_REQUIRES_CONFIRMED_RSVP');
@@ -98,7 +98,7 @@ const unassignGuest = async ({ guestId }, user) => {
     throw new AppError('Cab assignment not found', 404, 'CAB_ASSIGNMENT_NOT_FOUND');
   }
 
-  await accessService.assertEventAccess(user.id, assignment.cab.eventId, { level: 'FULL' });
+  await accessService.assertPlannerEventAccess(user.id, assignment.cab.eventId, { level: 'FULL' });
 
   const guest = await guestRepository.findById(guestId);
   await cabRepository.unassignGuestWithSeatRelease({

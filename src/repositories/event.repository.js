@@ -38,11 +38,35 @@ const update = (id, data) => {
   });
 };
 
+const softArchive = (id) => {
+  return prisma.event.update({
+    where: { id },
+    data: { deletedAt: new Date() }
+  });
+};
+
+const restore = (id) => {
+  return prisma.event.update({
+    where: { id },
+    data: { deletedAt: null }
+  });
+};
+
+const findArchivedByAccountId = (accountId) => {
+  return prisma.event.findMany({
+    where: { accountId, deletedAt: { not: null } },
+    orderBy: { deletedAt: 'desc' }
+  });
+};
+
 module.exports = {
   create,
   findByCreator,
   findByAccountId,
   findById,
   findByIdWithSetting,
-  update
+  update,
+  softArchive,
+  restore,
+  findArchivedByAccountId
 };

@@ -69,7 +69,48 @@ const summary = async (eventId) => {
   };
 };
 
-const liveFeed = (eventId) => auditRepository.findByEvent(eventId, 25);
+const liveFeed = async (eventId) => {
+  const items = await auditRepository.findByEvent(eventId, 25);
+  const guestIds = [
+    ...new Set(
+      items
+        .filter((item) => item.entityType === 'Guest' && item.entityId)
+        .map((item) => item.entityId)
+    )
+  ];
+
+  if (!guestIds.length) {
+    return items;
+  }
+
+  const guests = await prisma.guest.findMany({
+    where: { eventId, id: { in: guestIds } },
+    select: { id: true, name: true }
+  });
+  const nameById = guests.reduce((acc, guest) => {
+    acc[guest.id] = guest.name;
+    return acc;
+  }, {});
+
+  return items.map((item) => {
+    if (item.entityType !== 'Guest') {
+      return item;
+    }
+
+    const guestName = nameById[item.entityId];
+    if (!guestName) {
+      return item;
+    }
+
+    return {
+      ...item,
+      metadata: {
+        ...(item.metadata || {}),
+        guestName
+      }
+    };
+  });
+};
 
 module.exports = {
   summary,

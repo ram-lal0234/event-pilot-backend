@@ -67,6 +67,10 @@ copy_src "${SHARED_LAYER}" "constants/plivo-webhook-routes.js"
 copy_src "${SHARED_LAYER}" "config/db.js"
 copy_src "${SHARED_LAYER}" "config/env.js"
 copy_src "${SHARED_LAYER}" "queue/queue.service.js"
+copy_src "${SHARED_LAYER}" "notifications/notification-delivery.service.js"
+copy_src "${SHARED_LAYER}" "notifications/notification.producer.js"
+copy_src "${SHARED_LAYER}" "services/notification-consumer.service.js"
+copy_src "${SHARED_LAYER}" "services/outreach-delivery.service.js"
 for repo in "${ROOT_DIR}"/src/repositories/*.js; do
   copy_src "${SHARED_LAYER}" "repositories/$(basename "${repo}")"
 done
