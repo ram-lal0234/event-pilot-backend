@@ -139,7 +139,9 @@ module.exports.handler = async (event) => {
 
         const xml = await plivoIvrXml.buildDigitXml({
           guestId: queryParams.guestId || bodyParams.guestId,
-          digitPressed: bodyParams.Digits || queryParams.Digits
+          callId: queryParams.callId || bodyParams.callId,
+          digitPressed: bodyParams.Digits || queryParams.Digits,
+          plivoPayload: payload
         });
         return xmlResponse(xml);
       } catch (error) {

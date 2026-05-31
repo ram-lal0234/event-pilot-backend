@@ -73,7 +73,7 @@ const assertCanCreateEvent = async (userId) => {
 const assertCanTriggerVoice = async (userId, eventId) => {
   const { member, accessLevel } = await assertEventAccess(userId, eventId, { level: 'FULL' });
   if (!isPlannerRole(member.role) || member.role === 'STAFF') {
-    throw new AppError('Your role cannot trigger voice calls', 403, 'VOICE_NOT_ALLOWED');
+    throw new AppError('Your account cannot place calls for this event.', 403, 'VOICE_NOT_ALLOWED');
   }
   return { member, accessLevel };
 };

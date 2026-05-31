@@ -64,7 +64,25 @@ const buildAnswerXml = async ({ guestId, callId }) => {
 </Response>`;
 };
 
-const buildDigitXml = async ({ guestId, digitPressed }) => {
+const readPlivoCallUuid = (payload = {}) => (
+  payload.CallUUID
+  || payload.callUuid
+  || payload.call_uuid
+  || payload.CallUuid
+  || null
+);
+
+const readPlivoCallDuration = (payload = {}) => {
+  const raw = payload.Duration ?? payload.CallDuration ?? payload.callDuration ?? null;
+  if (raw === null || raw === undefined || raw === '') {
+    return null;
+  }
+
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const buildDigitXml = async ({ guestId, callId, digitPressed, plivoPayload = {} }) => {
   if (!guestId || !digitPressed) {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -83,8 +101,11 @@ const buildDigitXml = async ({ guestId, digitPressed }) => {
 
   await ivrService.handleWebhook({
     guestId,
+    callId,
+    callUuid: readPlivoCallUuid(plivoPayload),
     callStatus: 'COMPLETED',
     attempt: 1,
+    callDuration: readPlivoCallDuration(plivoPayload),
     responseInput: String(digitPressed)
   });
 
