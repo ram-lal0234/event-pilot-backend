@@ -6,13 +6,34 @@ const sign = (value, authToken) => crypto
   .update(value)
   .digest('base64');
 
-const buildPostSignaturePayload = (url, params, nonce) => {
-  const sortedParams = Object.keys(params)
-    .sort()
-    .map((key) => `${key}${params[key]}`)
-    .join('');
+const buildSortedQueryString = (searchParams) => {
+  const entries = [...searchParams.entries()].sort(([left], [right]) => left.localeCompare(right));
+  return entries.map(([key, value]) => `${key}=${value}`).join('&');
+};
 
-  return `${url}.${sortedParams}.${nonce}`;
+const buildSortedPostParamString = (params = {}) => Object.keys(params)
+  .sort()
+  .map((key) => `${key}${params[key]}`)
+  .join('');
+
+/** Plivo v3 POST: {base}?{sorted_query}.{sorted_post_keyvalue}.{nonce} */
+const buildPostSignaturePayload = (urlString, params, nonce) => {
+  const parsed = new URL(urlString);
+  const base = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+  const queryString = buildSortedQueryString(parsed.searchParams);
+  const postString = buildSortedPostParamString(params);
+
+  let assembled = base;
+
+  if (queryString) {
+    assembled += `?${queryString}`;
+  }
+
+  if (postString) {
+    assembled += `.${postString}`;
+  }
+
+  return `${assembled}.${nonce}`;
 };
 
 const signaturesMatch = (expected, headerValue = '') => headerValue
@@ -46,5 +67,8 @@ const validatePlivoSignature = ({ url, params, signature, mainAccountSignature, 
 };
 
 module.exports = {
-  validatePlivoSignature
+  validatePlivoSignature,
+  buildPostSignaturePayload,
+  buildSortedQueryString,
+  buildSortedPostParamString
 };

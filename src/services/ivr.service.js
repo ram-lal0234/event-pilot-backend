@@ -1,62 +1,66 @@
-const guestRepository = require('../repositories/guest.repository');
 const ivrRepository = require('../repositories/ivr.repository');
 const callRepository = require('../repositories/call.repository');
 const auditService = require('./audit.service');
 const outreachService = require('./outreach.service');
-const { publishGuestEventAsync, publishCallEventAsync } = require('./realtime-events');
+const voiceRsvpCapture = require('./voice-rsvp-capture.service');
+const { publishCallEventAsync } = require('./realtime-events');
 const { canTransition, isStaleTransition, normalizePlivoStatus } = require('./call-state.service');
 const AppError = require('../utils/AppError');
 
-const linkIvrCall = async ({ guestId, callId, callUuid, callOutcome }) => {
-  let call = null;
+const handleWebhook = async ({
+  guestId,
+  callId,
+  callUuid,
+  callStatus,
+  attempt,
+  callDuration,
+  responseInput,
+  callOutcome,
+  rsvpStatus,
+  groupSize,
+  pickupLocation,
+  needsCab,
+  needsHotel,
+  guestNotes,
+  language,
+  callbackAt
+}) => {
+  let captureFields;
 
-  if (callUuid) {
-    call = await callRepository.findByCallUuid(callUuid);
+  if (callOutcome) {
+    captureFields = {
+      callOutcome,
+      rsvpStatus: rsvpStatus || undefined
+    };
+  } else {
+    const digitCapture = voiceRsvpCapture.mapIvrDigitToCapture(responseInput);
+
+    if (!digitCapture) {
+      throw new AppError('Invalid IVR digit response', 400, 'IVR_INVALID_DIGIT');
+    }
+
+    captureFields = digitCapture;
   }
 
-  if (!call && callId) {
-    call = await callRepository.findById(callId);
-  }
+  const result = await voiceRsvpCapture.captureVoiceRsvpResult({
+    guestId,
+    callId: callId || null,
+    callUuid: callUuid || null,
+    callStatus: callStatus || 'COMPLETED',
+    attempt: attempt || 1,
+    callDuration: callDuration ?? null,
+    digitInput: responseInput ? String(responseInput) : captureFields.callOutcome,
+    groupSize: groupSize ?? null,
+    pickupLocation: pickupLocation || null,
+    needsCab: needsCab ?? undefined,
+    needsHotel: needsHotel ?? undefined,
+    guestNotes: guestNotes || null,
+    language: language || null,
+    callbackAt: callbackAt ?? null,
+    ...captureFields
+  }, { callMode: 'ivr' });
 
-  if (!call) {
-    call = await callRepository.findActiveByGuestId(guestId);
-  }
-
-  if (!call) {
-    return { callLinked: false, reason: 'CALL_NOT_FOUND', callUuid: callUuid || null };
-  }
-
-  const patch = { lastEventAt: new Date() };
-
-  if (callUuid && !call.callUuid) {
-    patch.callUuid = callUuid;
-  }
-
-  if (
-    call.status !== 'COMPLETED'
-    && canTransition(call.status, 'COMPLETED')
-    && !isStaleTransition(call.status, 'COMPLETED')
-  ) {
-    patch.status = 'COMPLETED';
-  }
-
-  const updated = await callRepository.update(call.id, patch);
-
-  if (patch.status === 'COMPLETED') {
-    void publishCallEventAsync(updated.eventId, 'call_completed', {
-      callId: updated.id,
-      guestId: updated.guestId,
-      status: 'COMPLETED',
-      callMode: 'ivr',
-      callOutcome
-    });
-  }
-
-  return {
-    callLinked: true,
-    callId: updated.id,
-    callUuid: updated.callUuid || callUuid || null
-  };
+  return result.guest;
 };
 
 const getPlatformObject = (payload = {}) => payload?.data?.object || payload?.data?.Object || {};
@@ -98,99 +102,76 @@ const createIdempotencyKey = (payload = {}) => {
     .join(':');
 };
 
-const handleWebhook = async ({
-  guestId,
-  callId,
-  callUuid,
-  callStatus,
-  attempt,
-  callDuration,
-  responseInput,
-  groupSize
-}) => {
-  const guest = await guestRepository.findById(guestId);
-
-  if (!guest) {
-    throw new AppError('Guest not found', 404, 'GUEST_NOT_FOUND');
+const readPlivoCallDuration = (payload = {}) => {
+  const raw = payload.Duration ?? payload.CallDuration ?? payload.callDuration ?? null;
+  if (raw === null || raw === undefined || raw === '') {
+    return null;
   }
 
-  const rsvpStatus = responseInput === '1' ? 'CONFIRMED' : 'DECLINED';
-  const callOutcome = rsvpStatus === 'CONFIRMED' ? 'completed' : 'declined';
-  const structuredResponse = JSON.stringify({
-    kind: 'ivr',
-    rsvpStatus,
-    callOutcome,
-    responseInput: String(responseInput),
-    callUuid: callUuid || null
-  });
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
+const isTerminalHangupPayload = (payload = {}) => {
+  const eventType = String(getEventType(payload)).toLowerCase();
+  const callStatus = String(payload.CallStatus || payload.callStatus || '').toLowerCase();
+
+  return eventType.includes('hangup')
+    || callStatus.includes('hangup')
+    || callStatus.includes('complete');
+};
+
+/** Hangup without a digit press should not count as a successful IVR completion. */
+const resolveTerminalStatusForHangup = async (call, payload, nextStatus) => {
+  if (nextStatus !== 'COMPLETED' || !isTerminalHangupPayload(payload)) {
+    return { status: nextStatus, callOutcome: null, abandonedIvr: false };
+  }
+
+  if (call.status === 'COMPLETED') {
+    return { status: 'COMPLETED', callOutcome: null, abandonedIvr: false };
+  }
+
+  const rsvpCaptured = await ivrRepository.hasRsvpCapturedSince(call.guestId, call.createdAt);
+  if (rsvpCaptured) {
+    return { status: 'COMPLETED', callOutcome: null, abandonedIvr: false };
+  }
+
+  return { status: 'FAILED', callOutcome: 'no_answer', abandonedIvr: true };
+};
+
+const recordAbandonedIvrHangup = async (call, payload) => {
   await ivrRepository.createLog({
-    eventId: guest.eventId,
-    guestId,
-    callStatus,
-    attempt,
-    callDuration,
-    responseInput: structuredResponse,
-    rsvpCaptured: Boolean(responseInput),
-    groupSizeCaptured: Boolean(groupSize)
-  });
-
-  const now = new Date();
-  const updatedGuest = await guestRepository.update(guestId, {
-    rsvpStatus,
-    ivrRespondedAt: now,
-    lastContactedAt: now,
-    ...(groupSize ? { groupSize } : {})
-  });
-
-  const callLink = await linkIvrCall({
-    guestId,
-    callId: callId || null,
-    callUuid: callUuid || null,
-    callOutcome
-  });
-
-  publishGuestEventAsync(guest.eventId, 'rsvp_updated', updatedGuest, {
-    callOutcome,
-    callMode: 'ivr',
-    call: {
-      callUuid: callUuid || callLink.callUuid || null,
-      status: 'COMPLETED'
-    }
-  });
-  publishGuestEventAsync(guest.eventId, 'call_completed', updatedGuest, {
-    callOutcome,
-    callMode: 'ivr',
-    call: {
-      callUuid: callUuid || callLink.callUuid || null,
-      status: 'COMPLETED'
-    }
+    eventId: call.eventId,
+    guestId: call.guestId,
+    callStatus: 'FAILED',
+    attempt: 1,
+    callDuration: readPlivoCallDuration(payload),
+    responseInput: JSON.stringify({
+      kind: 'ivr',
+      callOutcome: 'no_answer',
+      reason: 'hangup_without_digit'
+    }),
+    rsvpCaptured: false,
+    groupSizeCaptured: false
   });
 
   await auditService.enqueueAuditLog({
-    eventId: guest.eventId,
-    action: 'IVR_RESPONSE_CAPTURED',
-    entityType: 'Guest',
-    entityId: guestId,
+    eventId: call.eventId,
+    action: 'IVR_HANGUP_WITHOUT_RESPONSE',
+    entityType: 'Call',
+    entityId: call.id,
     metadata: {
-      responseInput,
-      rsvpStatus,
-      callMode: 'ivr',
-      callId: callId || null,
-      callUuid: callUuid || callLink.callUuid || null,
-      callLink,
-      groupSize: groupSize || guest.groupSize
+      guestId: call.guestId,
+      callUuid: call.callUuid || getCallUuid(payload) || null,
+      callOutcome: 'no_answer'
     }
   });
 
-  void outreachService.handleCallOutcomeForOutreach(guestId, callOutcome, {
-    rsvpUpdated: true
-  }).catch(() => {});
-
-  return updatedGuest;
+  void outreachService.handleCallOutcomeForOutreach(call.guestId, 'no_answer').catch(() => {});
 };
 
-const processPlivoEvent = async (payload) => {
+const processPlivoEvent = async (payload, options = {}) => {
+  const { enforceIvrDigitCapture = false } = options;
   const callUuid = getCallUuid(payload);
 
   if (!callUuid) {
@@ -233,12 +214,21 @@ const processPlivoEvent = async (payload) => {
     return { processed: true, callUuid, eventType, statusChanged: false };
   }
 
-  if (!canTransition(call.status, nextStatus)) {
-    return { processed: true, callUuid, eventType, rejectedTransition: `${call.status}->${nextStatus}` };
+  const terminalResolution = enforceIvrDigitCapture
+    ? await resolveTerminalStatusForHangup(call, payload, nextStatus)
+    : { status: nextStatus, callOutcome: null, abandonedIvr: false };
+  const resolvedStatus = terminalResolution.status;
+
+  if (!canTransition(call.status, resolvedStatus)) {
+    return { processed: true, callUuid, eventType, rejectedTransition: `${call.status}->${resolvedStatus}` };
+  }
+
+  if (terminalResolution.abandonedIvr) {
+    await recordAbandonedIvrHangup(call, payload);
   }
 
   await callRepository.update(call.id, {
-    status: nextStatus,
+    status: resolvedStatus,
     lastEventAt: new Date()
   });
 
@@ -251,29 +241,39 @@ const processPlivoEvent = async (payload) => {
       callUuid,
       eventType,
       previousStatus: call.status,
-      nextStatus
+      nextStatus: resolvedStatus,
+      ...(terminalResolution.callOutcome ? { callOutcome: terminalResolution.callOutcome } : {})
     }
   });
 
-  if (nextStatus === 'ANSWERED' || nextStatus === 'AI_ACTIVE') {
+  if (resolvedStatus === 'ANSWERED' || resolvedStatus === 'AI_ACTIVE') {
     void publishCallEventAsync(call.eventId, 'call_answered', {
       callId: call.id,
       guestId: call.guestId,
-      status: nextStatus
+      status: resolvedStatus
     });
-  } else if (nextStatus === 'COMPLETED' || nextStatus === 'FAILED') {
+  } else if (resolvedStatus === 'COMPLETED' || resolvedStatus === 'FAILED') {
     void publishCallEventAsync(call.eventId, 'call_completed', {
       callId: call.id,
       guestId: call.guestId,
-      status: nextStatus
+      status: resolvedStatus,
+      callOutcome: terminalResolution.callOutcome || undefined
     });
   }
 
-  return { processed: true, callUuid, eventType, status: nextStatus };
+  return {
+    processed: true,
+    callUuid,
+    eventType,
+    status: resolvedStatus,
+    ...(terminalResolution.callOutcome ? { callOutcome: terminalResolution.callOutcome } : {})
+  };
 };
 
 module.exports = {
   handleWebhook,
   processPlivoEvent,
-  createIdempotencyKey
+  createIdempotencyKey,
+  resolveTerminalStatusForHangup,
+  isTerminalHangupPayload
 };

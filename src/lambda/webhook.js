@@ -141,7 +141,8 @@ module.exports.handler = async (event) => {
           guestId: queryParams.guestId || bodyParams.guestId,
           callId: queryParams.callId || bodyParams.callId,
           digitPressed: bodyParams.Digits || queryParams.Digits,
-          plivoPayload: payload
+          plivoPayload: payload,
+          sessionParams: queryParams
         });
         return xmlResponse(xml);
       } catch (error) {

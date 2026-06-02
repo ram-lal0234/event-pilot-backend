@@ -25,6 +25,12 @@ describe('voice-ai.service', () => {
       }
       return Promise.resolve(null);
     });
+    prismaMock.guest.findFirst.mockImplementation((args) => {
+      if (args?.where?.id === guestFixture.id) {
+        return Promise.resolve(guestFixture);
+      }
+      return Promise.resolve(null);
+    });
     prismaMock.guest.update.mockImplementation((args) => (
       Promise.resolve({ ...guestFixture, ...args.data })
     ));

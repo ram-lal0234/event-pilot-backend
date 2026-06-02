@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 const prismaMock = vi.hoisted(() => ({
   guest: {
     findUnique: vi.fn(),
+    findFirst: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -50,6 +51,9 @@ const prismaMock = vi.hoisted(() => ({
     findFirst: vi.fn(),
     findUnique: vi.fn(),
     update: vi.fn()
+  },
+  hotel: {
+    findMany: vi.fn()
   },
   $transaction: vi.fn((ops) => Promise.all(ops))
 }));

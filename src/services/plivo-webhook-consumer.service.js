@@ -83,7 +83,7 @@ const processPlivoWebhookJob = async (job = {}) => {
       return { kind: route, skipped: true, reason: 'sync_route_should_not_be_queued' };
 
     case 'telephony':
-      return ivrService.processPlivoEvent(body);
+      return ivrService.processPlivoEvent(body, { enforceIvrDigitCapture: true });
 
     default:
       logger.warn('Unhandled Plivo webhook route', { route });
